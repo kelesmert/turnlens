@@ -293,4 +293,37 @@ describe("parseCodexRecord reads prompts", () => {
       }),
     ).toEqual([]);
   });
+
+  /**
+   * Codex mirrors every real prompt into a `response_item` message and also
+   * writes its own notices there under the same `role: "user"`. The two shapes
+   * are identical -- same payload keys, same `input_text` content item -- so a
+   * reader cannot tell a prompt from a notice, and the notice arrives last.
+   *
+   * Reading prompts only from `event_msg` / `user_message` is what keeps them
+   * apart: in the session this shape was transcribed from, that event occurred
+   * exactly as often as the user actually typed something, while the two
+   * notices had no counterpart.
+   *
+   * The Python implementation read both sources and let the later one win, so an
+   * interrupted turn's preview became the interruption notice instead of the
+   * prompt. This test exists to make reintroducing that a failing test rather
+   * than a silent change to a column nobody watches.
+   */
+  it("ignores an injected user-role response item so it cannot overwrite a prompt", () => {
+    expect(
+      parseCodexRecord({
+        type: "response_item",
+        timestamp: "t",
+        payload: {
+          type: "message",
+          role: "user",
+          id: "msg_1",
+          content: [
+            { type: "input_text", text: "<turn_aborted>\nThe user interrupted the previous turn." },
+          ],
+        },
+      }),
+    ).toEqual([]);
+  });
 });
