@@ -2,6 +2,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Plan-mode scratch output. Plans that matter are committed under
+# docs/superpowers/plans/ with a meaningful name.
+.claude/plans/
+
 # Runtime output from the legacy Python watcher
 codex-turn-usage/
 .codex-turn-watch-locks/
