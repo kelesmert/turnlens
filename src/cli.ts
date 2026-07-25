@@ -6,6 +6,7 @@ import { acquireSessionLock } from "./core/lock.js";
 import { toFiniteInt } from "./core/numbers.js";
 import { truncate } from "./core/text.js";
 import { PROVIDER_IDS, getAdapter, isProviderId } from "./providers/registry.js";
+import { confirmYesNo, decidePromptPreview } from "./ui/prompts.js";
 import { summariseCsv } from "./ui/summary.js";
 import { runWatch } from "./watch.js";
 import type { SessionRef } from "./core/types.js";
@@ -18,12 +19,16 @@ const RULE_WIDTH = 100;
 const HELP = [
   "turnscope - per-turn token monitoring for AI coding agents",
   "",
-  "Usage: turnscope [--provider <id>] [--prompt-preview]",
+  "Usage: turnscope [--provider <id>] [--prompt-preview | --no-prompt-preview]",
   "",
-  `  --provider <id>   Agent to monitor. One of: ${PROVIDER_IDS.join(", ")}. Default: codex`,
-  "  --prompt-preview  Record a 20-character preview of each prompt.",
-  "                    This writes part of your prompt to disk. Off by default.",
-  "  --help            Show this message",
+  `  --provider <id>      Agent to monitor. One of: ${PROVIDER_IDS.join(", ")}. Default: codex`,
+  "  --prompt-preview     Record a 20-character preview of each prompt.",
+  "                       This writes part of your prompt to disk.",
+  "  --no-prompt-preview  Never record prompt previews.",
+  "  --help               Show this message",
+  "",
+  "With neither preview flag, you are asked once at startup and the answer",
+  "defaults to no. Piped input is never asked, and previews stay off.",
   "",
   "Session files are only ever read, never modified. Stop monitoring with Ctrl+C;",
   "a session summary is printed on exit.",
@@ -34,7 +39,10 @@ async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       provider: { type: "string", default: "codex" },
-      "prompt-preview": { type: "boolean", default: false },
+      // No defaults: an absent flag must stay distinguishable from an explicit
+      // one, because absent means "ask" while explicit means "do not ask".
+      "prompt-preview": { type: "boolean" },
+      "no-prompt-preview": { type: "boolean" },
       help: { type: "boolean", default: false },
     },
     allowPositionals: false,
@@ -50,12 +58,25 @@ async function main(): Promise<void> {
     throw new Error(`Unknown provider: ${providerId}\nKnown providers: ${PROVIDER_IDS.join(", ")}`);
   }
 
+  // Resolved before any session work so a contradictory pair of flags fails
+  // immediately rather than after the user has picked a session.
+  const previewChoice = decidePromptPreview({
+    enable: values["prompt-preview"] === true,
+    disable: values["no-prompt-preview"] === true,
+    interactive: process.stdin.isTTY === true,
+  });
+
   const adapter = getAdapter(providerId);
   const sessions = (await adapter.listSessions()).slice(0, SESSION_LIST_LIMIT);
   if (sessions.length === 0) throw new Error(`No ${providerId} session files were found.`);
 
   const selected = await selectSession(sessions);
-  const includePromptPreview = values["prompt-preview"] === true;
+  const includePromptPreview =
+    previewChoice === "ask"
+      ? await confirmYesNo(
+          "\nStore a 20-character preview of each prompt in the CSV?\nThis writes part of your prompt to disk.",
+        )
+      : previewChoice === "enabled";
   const csvPath = join(process.cwd(), LOG_DIR, `${toFileStem(selected.sessionId)}.csv`);
 
   // Held for the whole run so two watchers cannot append to one CSV.
