@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { CSV_HEADER, appendTurn, openCsv, turnRowKey } from "../src/core/store/csv.js";
 import { emptyUsage } from "../src/core/usage.js";
 import type { NormalizedTurn } from "../src/core/types.js";
+import type { CostStatus } from "../src/pricing/types.js";
 
 async function tempCsv(): Promise<string> {
   return join(await mkdtemp(join(tmpdir(), "turnscope-csv-")), "session.csv");
@@ -24,8 +25,24 @@ function turn(overrides: Partial<NormalizedTurn> = {}): NormalizedTurn {
     model: "gpt-5.6-sol",
     reasoningEffort: "medium",
     promptPreview: "",
+    costStatus: "priced",
+    costUsd: 0.038_044,
+    pricingVersion: "litellm@sha256:0123456789ab",
     ...overrides,
   };
+}
+
+/**
+ * A turn the resolver could not price.
+ *
+ * `costUsd` is omitted rather than set to `undefined`, because
+ * `exactOptionalPropertyTypes` treats those as different types and the absent
+ * one is what the pipeline actually produces.
+ */
+function unpricedTurn(costStatus: CostStatus): NormalizedTurn {
+  const { costUsd, ...rest } = turn();
+  void costUsd;
+  return { ...rest, costStatus };
 }
 
 /** Reads one data row as a field array, honouring quoted fields. */
@@ -231,14 +248,6 @@ describe("appendTurn", () => {
     expect(field(fields, "prompt_preview")).toBe("a, b");
   });
 
-  it("leaves the cost column empty because native pricing is not implemented yet", async () => {
-    const path = await tempCsv();
-    await openCsv(path);
-    await appendTurn(path, turn());
-
-    expect(field(await readRow(path), "estimated_cost_usd")).toBe("");
-  });
-
   it("writes empty cells for absent optional values rather than the text undefined", async () => {
     const path = await tempCsv();
     await openCsv(path);
@@ -309,5 +318,83 @@ describe("appendTurn", () => {
 
     expect([...state.recordedKeys]).toEqual([turnRowKey(recorded)]);
     expect(state.maxTurnNumber).toBe(1);
+  });
+});
+
+describe("appendTurn records cost", () => {
+  it("writes the cost with six decimals so small turns are not rounded to zero", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    await appendTurn(path, turn({ costUsd: 0.000_123_4 }));
+
+    const fields = await readRow(path);
+    expect(field(fields, "estimated_cost_usd")).toBe("0.000123");
+    expect(field(fields, "cost_status")).toBe("priced");
+    expect(field(fields, "pricing_version")).toBe("litellm@sha256:0123456789ab");
+  });
+
+  it("writes a real turn cost", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    await appendTurn(path, turn({ costUsd: 0.038_044 }));
+
+    expect(field(await readRow(path), "estimated_cost_usd")).toBe("0.038044");
+  });
+
+  // An empty cell does not enter a spreadsheet sum; a 0 does. That difference is
+  // the whole reason unknown is never written as zero.
+  it("leaves the cost empty and records why when a turn cannot be priced", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    await appendTurn(path, unpricedTurn("model_unknown"));
+
+    const fields = await readRow(path);
+    expect(field(fields, "estimated_cost_usd")).toBe("");
+    expect(field(fields, "cost_status")).toBe("model_unknown");
+  });
+
+  it("leaves the cost empty for a turn whose model has an incomplete rate table", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    await appendTurn(path, unpricedTurn("no_pricing_data"));
+
+    const fields = await readRow(path);
+    expect(field(fields, "estimated_cost_usd")).toBe("");
+    expect(field(fields, "cost_status")).toBe("no_pricing_data");
+  });
+
+  it("keeps one physical line per turn after the schema change", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    await appendTurn(path, turn());
+    await appendTurn(path, turn({ turnNumber: 2, turnId: "turn-b" }));
+
+    expect((await readFile(path, "utf8")).trim().split("\n")).toHaveLength(3);
+  });
+});
+
+describe("openCsv and the pricing schema change", () => {
+  it("refuses a file written by the previous schema and names what changed", async () => {
+    const path = await tempCsv();
+    const oldHeader = CSV_HEADER.filter(
+      (column) => column !== "cost_status" && column !== "pricing_version",
+    ).join(",");
+    await writeFile(path, `${oldHeader}\n`, "utf8");
+
+    await expect(openCsv(path)).rejects.toThrow(/cost_status/u);
+    await expect(openCsv(path)).rejects.toThrow(/pricing_version/u);
+  });
+
+  // Refusing is only acceptable if the user's data survives untouched.
+  it("leaves a rejected file byte-identical", async () => {
+    const path = await tempCsv();
+    const oldHeader = CSV_HEADER.filter(
+      (column) => column !== "cost_status" && column !== "pricing_version",
+    ).join(",");
+    const before = `${oldHeader}\n2026-07-22T02:31:05.000Z,codex,s,n,1,turn-a,completed\n`;
+    await writeFile(path, before, "utf8");
+
+    await expect(openCsv(path)).rejects.toThrow();
+    expect(await readFile(path, "utf8")).toBe(before);
   });
 });

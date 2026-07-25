@@ -24,6 +24,8 @@ export const CSV_HEADER = [
   "reasoning_subset",
   "total_tokens",
   "estimated_cost_usd",
+  "cost_status",
+  "pricing_version",
   "primary_used_percent",
   "primary_window_minutes",
   "secondary_used_percent",
@@ -103,6 +105,10 @@ export async function openCsv(path: string): Promise<CsvState> {
         `Found:\n${header}`,
         "",
         `Expected:\n${HEADER_LINE}`,
+        "",
+        "The schema gained cost_status and pricing_version when native pricing",
+        "was added. This file was written by an earlier version. It is left",
+        "untouched: move or rename it and TurnScope will start a new one.",
       ].join("\n"),
     );
   }
@@ -164,8 +170,11 @@ export async function appendTurn(path: string, turn: NormalizedTurn): Promise<vo
     String(turn.usage.output),
     String(turn.usage.reasoning),
     String(turn.usage.total),
-    // Native pricing arrives in a later plan; an empty cell is honest, 0 is not.
-    "",
+    // Empty when the turn could not be priced: an empty cell stays out of a
+    // spreadsheet sum, while a 0 silently joins it.
+    turn.costUsd === undefined ? "" : formatCostUsd(turn.costUsd),
+    turn.costStatus,
+    turn.pricingVersion,
     optionalNumber(turn.rateLimits?.primaryUsedPercent),
     optionalNumber(turn.rateLimits?.primaryWindowMinutes),
     optionalNumber(turn.rateLimits?.secondaryUsedPercent),
@@ -193,6 +202,16 @@ function read(fields: readonly string[], column: CsvColumn): string {
 
 function optionalNumber(value: number | undefined): string {
   return value === undefined ? "" : String(value);
+}
+
+/**
+ * Renders a cost in fixed decimals.
+ *
+ * Six places because a short turn can cost fractions of a cent, and exponential
+ * notation (`3.8e-5`) is not something a spreadsheet or `awk` reads as a number.
+ */
+export function formatCostUsd(amountUsd: number): string {
+  return amountUsd.toFixed(6);
 }
 
 /** Renders one field as a single-line, quote-safe CSV value. */

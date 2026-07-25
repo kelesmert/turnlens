@@ -1,3 +1,7 @@
+// Type-only, and src/pricing/types.ts imports nothing of its own, so naming the
+// status here does not couple the core pipeline to pricing behaviour.
+import type { CostStatus } from "../pricing/types.js";
+
 /**
  * Normalised token counts for one turn or one model step.
  *
@@ -101,6 +105,11 @@ export interface NormalizedTurn {
   readonly model: string;
   readonly reasoningEffort: string;
   readonly promptPreview: string;
+  /** Omitted unless `costStatus` is `priced`. Absent never means free. */
+  readonly costUsd?: number;
+  readonly costStatus: CostStatus;
+  /** Which pricing document produced `costUsd`, so an old row stays explainable. */
+  readonly pricingVersion: string;
   readonly durationMs?: number;
   readonly rateLimits?: RateLimits;
 }
