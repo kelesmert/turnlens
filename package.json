@@ -19,6 +19,7 @@
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
     "pricing:snapshot": "node scripts/build-pricing-snapshot.mjs",
+    "verify:costs": "node scripts/verify-costs.mjs",
     "dev": "node --experimental-strip-types src/cli.ts"
   },
   "devDependencies": {
