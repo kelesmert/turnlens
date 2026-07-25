@@ -7,7 +7,7 @@ import { toFiniteInt } from "./core/numbers.js";
 import { resolveSessionLockDir } from "./core/paths.js";
 import { truncate } from "./core/text.js";
 import { resolvePricingCachePath } from "./pricing/cache.js";
-import { createPricingResolver } from "./pricing/resolver.js";
+import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
 import { PROVIDER_IDS, getAdapter, isProviderId } from "./providers/registry.js";
 import { confirmYesNo, decidePromptPreview } from "./ui/prompts.js";
 import { summariseCsv } from "./ui/summary.js";
@@ -23,15 +23,25 @@ const HELP = [
   "turnscope - per-turn token monitoring for AI coding agents",
   "",
   "Usage: turnscope [--provider <id>] [--prompt-preview | --no-prompt-preview]",
+  "                 [--offline] [--refresh-pricing]",
   "",
   `  --provider <id>      Agent to monitor. One of: ${PROVIDER_IDS.join(", ")}. Default: codex`,
   "  --prompt-preview     Record a 20-character preview of each prompt.",
   "                       This writes part of your prompt to disk.",
   "  --no-prompt-preview  Never record prompt previews.",
+  "  --offline            Price from local data only. Never access the network.",
+  "  --refresh-pricing    Download the pricing list now, even if it looks current.",
   "  --help               Show this message",
   "",
   "With neither preview flag, you are asked once at startup and the answer",
   "defaults to no. Piped input is never asked, and previews stay off.",
+  "",
+  "Before monitoring starts, TurnScope asks LiteLLM whether its published price",
+  "list has changed and downloads it only if so; the result is kept under",
+  "~/.turnscope/pricing/. If the network is unreachable it falls back to that",
+  "file, then to the list shipped with TurnScope, and carries on. Use --offline",
+  "to skip the check. Nothing is fetched while a session is being watched, and a",
+  "turn whose model cannot be priced records no cost rather than zero.",
   "",
   "Session files are only ever read, never modified. Stop monitoring with Ctrl+C;",
   "a session summary is printed on exit.",
@@ -46,6 +56,8 @@ async function main(): Promise<void> {
       // one, because absent means "ask" while explicit means "do not ask".
       "prompt-preview": { type: "boolean" },
       "no-prompt-preview": { type: "boolean" },
+      offline: { type: "boolean", default: false },
+      "refresh-pricing": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
     allowPositionals: false,
@@ -69,6 +81,32 @@ async function main(): Promise<void> {
     interactive: process.stdin.isTTY === true,
   });
 
+  // Named `refreshRequested`, not `refreshPricing`: that identifier is the
+  // imported function, and shadowing it here would be a compile error.
+  const offline = values.offline === true;
+  const refreshRequested = values["refresh-pricing"] === true;
+  if (offline && refreshRequested) {
+    throw new Error("Both --offline and --refresh-pricing were given. Pass only one.");
+  }
+
+  const cachePath = resolvePricingCachePath();
+  if (refreshRequested) {
+    const refreshed = await refreshPricing({ offline: false, cachePath });
+    write([
+      refreshed === undefined
+        ? "Pricing refresh failed. Continuing with the pricing data already available."
+        : `Pricing refreshed: ${refreshed.modelCount} models, ${refreshed.version}`,
+    ]);
+  }
+
+  // Built before monitoring starts, so every network moment in a run happens
+  // here and `lookup` stays synchronous inside the tailing loop.
+  const pricing = await createPricingResolver({
+    offline,
+    cachePath,
+    notify: (line) => write([line]),
+  });
+
   const adapter = getAdapter(providerId);
   const sessions = (await adapter.listSessions()).slice(0, SESSION_LIST_LIMIT);
   if (sessions.length === 0) throw new Error(`No ${providerId} session files were found.`);
@@ -87,14 +125,6 @@ async function main(): Promise<void> {
   // which is machine-wide, so a per-directory lock would not be seen by a
   // watcher started elsewhere.
   const lock = await acquireSessionLock(resolveSessionLockDir(), selected.path);
-
-  // Built before monitoring starts, so every network moment in a run happens
-  // here and `lookup` stays synchronous inside the tailing loop.
-  const pricing = await createPricingResolver({
-    offline: false,
-    cachePath: resolvePricingCachePath(),
-    notify: (line) => write([line]),
-  });
 
   // No terminal is spawned: the CLI runs in the terminal that invoked it, which
   // is why Ctrl+C simply stops monitoring (known-bugs.md P2-3).
@@ -115,6 +145,7 @@ async function main(): Promise<void> {
     `Session file    : ${selected.path}`,
     `CSV file        : ${csvPath}`,
     `Prompt previews : ${includePromptPreview ? "enabled" : "disabled"}`,
+    `Pricing         : ${pricing.version}${offline ? " (offline)" : ""}`,
     "Stop monitoring : Ctrl+C",
     "=".repeat(RULE_WIDTH),
     "",
