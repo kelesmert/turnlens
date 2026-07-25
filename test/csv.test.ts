@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CSV_HEADER, appendTurn, openCsv } from "../src/core/store/csv.js";
+import { CSV_HEADER, appendTurn, openCsv, turnRowKey } from "../src/core/store/csv.js";
 import { emptyUsage } from "../src/core/usage.js";
 import type { NormalizedTurn } from "../src/core/types.js";
 
@@ -70,6 +70,30 @@ describe("CSV_HEADER", () => {
   });
 });
 
+describe("turnRowKey", () => {
+  // Codex closes a turn at a context compaction and then reports task_complete
+  // carrying the same turn id. Keying rows on the id alone discarded the second
+  // row: 4,134,039 tokens and 59 tool calls across four turns of a real session.
+  it("separates a compaction from the completion that reports the same turn id", () => {
+    const compacted = turnRowKey({ turnId: "019f87c7", status: "compacted", at: "t1" });
+    const completed = turnRowKey({ turnId: "019f87c7", status: "completed", at: "t2" });
+
+    expect(compacted).not.toBe(completed);
+  });
+
+  it("is stable for the same row so a re-import records nothing twice", () => {
+    const identity = { turnId: "019f87c7", status: "completed", at: "t1" };
+
+    expect(turnRowKey(identity)).toBe(turnRowKey({ ...identity }));
+  });
+
+  it("does not merge two rows whose fields differ only in where a boundary falls", () => {
+    expect(turnRowKey({ turnId: "a", status: "b", at: "c" })).not.toBe(
+      turnRowKey({ turnId: "a b", status: "c", at: "" }),
+    );
+  });
+});
+
 describe("openCsv", () => {
   it("creates the file with the header and reports empty state", async () => {
     const path = await tempCsv();
@@ -77,7 +101,7 @@ describe("openCsv", () => {
     const state = await openCsv(path);
 
     expect(state.maxTurnNumber).toBe(0);
-    expect(state.turnIds.size).toBe(0);
+    expect(state.recordedKeys.size).toBe(0);
     expect(await readFile(path, "utf8")).toBe(`${CSV_HEADER.join(",")}\n`);
   });
 
@@ -89,18 +113,37 @@ describe("openCsv", () => {
     expect(await readFile(path, "utf8")).toBe(`${CSV_HEADER.join(",")}\n`);
   });
 
-  it("reads existing turn ids and the highest turn number without rewriting the file", async () => {
+  it("reads the recorded rows and the highest turn number without rewriting the file", async () => {
     const path = await tempCsv();
     await openCsv(path);
-    await appendTurn(path, turn({ turnNumber: 1, turnId: "turn-a" }));
-    await appendTurn(path, turn({ turnNumber: 2, turnId: "turn-b" }));
+    const first = turn({ turnNumber: 1, turnId: "turn-a" });
+    const second = turn({ turnNumber: 2, turnId: "turn-b", at: "2026-07-22T02:40:00.000Z" });
+    await appendTurn(path, first);
+    await appendTurn(path, second);
     const before = await readFile(path, "utf8");
 
     const state = await openCsv(path);
 
     expect(state.maxTurnNumber).toBe(2);
-    expect([...state.turnIds].sort()).toEqual(["turn-a", "turn-b"]);
+    expect(state.recordedKeys.has(turnRowKey(first))).toBe(true);
+    expect(state.recordedKeys.has(turnRowKey(second))).toBe(true);
+    expect(state.recordedKeys.size).toBe(2);
     expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  it("distinguishes a compaction from a completion sharing one turn id", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    const compacted = turn({ turnNumber: 1, turnId: "shared", status: "compacted", at: "t1" });
+    const completed = turn({ turnNumber: 2, turnId: "shared", status: "completed", at: "t2" });
+    await appendTurn(path, compacted);
+    await appendTurn(path, completed);
+
+    const state = await openCsv(path);
+
+    expect(state.recordedKeys.size).toBe(2);
+    expect(state.recordedKeys.has(turnRowKey(compacted))).toBe(true);
+    expect(state.recordedKeys.has(turnRowKey(completed))).toBe(true);
   });
 
   it("rejects a file whose header does not match the current schema", async () => {
@@ -120,14 +163,15 @@ describe("openCsv", () => {
     expect(await readFile(path, "utf8")).toBe(`${CSV_HEADER.join(",")}\n`);
   });
 
-  it("recovers turn ids that contain a comma", async () => {
+  it("recovers a row whose turn id contains a comma", async () => {
     const path = await tempCsv();
     await openCsv(path);
-    await appendTurn(path, turn({ turnId: "weird,id" }));
+    const recorded = turn({ turnId: "weird,id" });
+    await appendTurn(path, recorded);
 
     const state = await openCsv(path);
 
-    expect(state.turnIds.has("weird,id")).toBe(true);
+    expect(state.recordedKeys.has(turnRowKey(recorded))).toBe(true);
   });
 });
 
@@ -251,17 +295,19 @@ describe("appendTurn", () => {
   // A newline inside a field would split the row across physical lines, and the
   // trailing fragment then reads as a row of its own. That fabricates a turn id,
   // which would make the next real turn look like a duplicate and be skipped.
-  it("cannot have a turn id or turn number fabricated by a newline inside a field", async () => {
+  it("cannot have a row or turn number fabricated by a newline inside a field", async () => {
     const path = await tempCsv();
     await openCsv(path);
-    await appendTurn(
-      path,
-      turn({ turnNumber: 1, turnId: "turn-a", promptPreview: "one\n9,9,9,9,42,injected,x" }),
-    );
+    const recorded = turn({
+      turnNumber: 1,
+      turnId: "turn-a",
+      promptPreview: "one\n9,9,9,9,42,injected,x",
+    });
+    await appendTurn(path, recorded);
 
     const state = await openCsv(path);
 
-    expect([...state.turnIds]).toEqual(["turn-a"]);
+    expect([...state.recordedKeys]).toEqual([turnRowKey(recorded)]);
     expect(state.maxTurnNumber).toBe(1);
   });
 });

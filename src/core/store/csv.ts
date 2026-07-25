@@ -35,10 +35,40 @@ type CsvColumn = (typeof CSV_HEADER)[number];
 
 export interface CsvState {
   readonly maxTurnNumber: number;
-  readonly turnIds: ReadonlySet<string>;
+  /** Keys of the rows already recorded, for skipping them on re-import. */
+  readonly recordedKeys: ReadonlySet<string>;
+}
+
+/** The parts of a turn that identify its row. */
+export interface TurnRowIdentity {
+  readonly turnId: string;
+  readonly status: string;
+  readonly at: string;
 }
 
 const HEADER_LINE = CSV_HEADER.join(",");
+
+// A NUL can never occur in a session field, so two distinct rows cannot collide
+// into one key. A printable separator could appear inside a provider turn id.
+const KEY_SEPARATOR = "\u0000";
+
+/**
+ * Identifies one recorded row.
+ *
+ * A provider turn id is deliberately not enough on its own. When a context
+ * compaction happens mid-turn, Codex closes the turn at the compaction and then
+ * reports `task_complete` carrying the *same* turn id, so keying on the id alone
+ * discards the second row: measured on a real session, that silently dropped
+ * 4,134,039 tokens and 59 tool calls across four turns. Adding the status and the
+ * closing timestamp makes the key unique per row while leaving the `turn_id`
+ * column faithful to what the provider reported.
+ *
+ * Every part comes from the session file, so re-importing the same history
+ * produces the same keys and records nothing twice.
+ */
+export function turnRowKey(row: TurnRowIdentity): string {
+  return [row.turnId, row.status, row.at].join(KEY_SEPARATOR);
+}
 
 /**
  * Ensures the CSV exists with the current header and reports what it holds.
@@ -77,18 +107,23 @@ export async function openCsv(path: string): Promise<CsvState> {
     );
   }
 
-  const turnIds = new Set<string>();
+  const recordedKeys = new Set<string>();
   let maxTurnNumber = 0;
 
   for (const row of rows.slice(1)) {
     const fields = parseCsvRow(row);
     maxTurnNumber = Math.max(maxTurnNumber, toFiniteInt(read(fields, "turn_number"), 0));
 
-    const turnId = read(fields, "turn_id");
-    if (turnId !== "") turnIds.add(turnId);
+    recordedKeys.add(
+      turnRowKey({
+        turnId: read(fields, "turn_id"),
+        status: read(fields, "status"),
+        at: read(fields, "timestamp"),
+      }),
+    );
   }
 
-  return { maxTurnNumber, turnIds };
+  return { maxTurnNumber, recordedKeys };
 }
 
 /**
@@ -149,7 +184,7 @@ export async function appendTurn(path: string, turn: NormalizedTurn): Promise<vo
 
 async function createEmpty(path: string): Promise<CsvState> {
   await writeFile(path, `${HEADER_LINE}\n`, "utf8");
-  return { maxTurnNumber: 0, turnIds: new Set() };
+  return { maxTurnNumber: 0, recordedKeys: new Set() };
 }
 
 function read(fields: readonly string[], column: CsvColumn): string {
