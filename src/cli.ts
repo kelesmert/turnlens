@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { acquireSessionLock } from "./core/lock.js";
 import { toFiniteInt } from "./core/numbers.js";
+import { resolveSessionLockDir } from "./core/paths.js";
 import { truncate } from "./core/text.js";
 import { PROVIDER_IDS, getAdapter, isProviderId } from "./providers/registry.js";
 import { confirmYesNo, decidePromptPreview } from "./ui/prompts.js";
@@ -11,8 +12,8 @@ import { summariseCsv } from "./ui/summary.js";
 import { runWatch } from "./watch.js";
 import type { SessionRef } from "./core/types.js";
 
+/** Relative to the working directory: the CSV is output the user owns. */
 const LOG_DIR = "turnscope-usage";
-const LOCK_DIR = ".turnscope-locks";
 const SESSION_LIST_LIMIT = 25;
 const RULE_WIDTH = 100;
 
@@ -79,8 +80,11 @@ async function main(): Promise<void> {
       : previewChoice === "enabled";
   const csvPath = join(process.cwd(), LOG_DIR, `${toFileStem(selected.sessionId)}.csv`);
 
-  // Held for the whole run so two watchers cannot append to one CSV.
-  const lock = await acquireSessionLock(join(process.cwd(), LOCK_DIR), selected.path);
+  // Held for the whole run so one session is never watched twice. The lock lives
+  // under the user's home, not the working directory: it covers a session file,
+  // which is machine-wide, so a per-directory lock would not be seen by a
+  // watcher started elsewhere.
+  const lock = await acquireSessionLock(resolveSessionLockDir(), selected.path);
 
   // No terminal is spawned: the CLI runs in the terminal that invoked it, which
   // is why Ctrl+C simply stops monitoring (known-bugs.md P2-3).

@@ -10,6 +10,7 @@ dist/
 codex-turn-usage/
 .codex-turn-watch-locks/
 
-# Runtime output from the TypeScript CLI
+# Runtime output from the TypeScript CLI. Locks now live in ~/.turnscope/locks/;
+# .turnscope-locks/ stays listed so leftovers from before that move are ignored.
 turnscope-usage/
 .turnscope-locks/
