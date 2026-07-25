@@ -97,6 +97,11 @@ export async function openCsv(path: string): Promise<CsvState> {
  * `fsync` is what makes a recorded turn survive an abrupt exit. No file locking
  * is taken here: the session lock already guarantees a single writer, so
  * per-write locking would add cost without adding safety.
+ *
+ * Exactly one physical line is written per turn. Line breaks inside a field are
+ * collapsed rather than quoted: a quoted multi-line field is valid CSV, but it
+ * would let a trailing fragment read as a row of its own on the next `openCsv`,
+ * fabricating a turn id and skipping the next real turn as a duplicate.
  */
 export async function appendTurn(path: string, turn: NormalizedTurn): Promise<void> {
   const sortedToolCalls = Object.fromEntries(
@@ -135,7 +140,7 @@ export async function appendTurn(path: string, turn: NormalizedTurn): Promise<vo
 
   const handle = await open(path, "a");
   try {
-    await handle.writeFile(`${fields.map(escapeCsvField).join(",")}\n`, "utf8");
+    await handle.writeFile(`${fields.map(toCsvField).join(",")}\n`, "utf8");
     await handle.sync();
   } finally {
     await handle.close();
@@ -155,13 +160,15 @@ function optionalNumber(value: number | undefined): string {
   return value === undefined ? "" : String(value);
 }
 
-function escapeCsvField(value: string): string {
-  if (!/[",\n\r]/u.test(value)) return value;
-  return `"${value.replaceAll('"', '""')}"`;
+/** Renders one field as a single-line, quote-safe CSV value. */
+function toCsvField(value: string): string {
+  const singleLine = value.replace(/[\r\n]+/gu, " ").trim();
+  if (!/[",]/u.test(singleLine)) return singleLine;
+  return `"${singleLine.replaceAll('"', '""')}"`;
 }
 
 /** Splits one CSV row, honouring quoted fields and doubled quotes. */
-function parseCsvRow(row: string): readonly string[] {
+export function parseCsvRow(row: string): readonly string[] {
   const fields: string[] = [];
   let current = "";
   let inQuotes = false;

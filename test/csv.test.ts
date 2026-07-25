@@ -236,11 +236,32 @@ describe("appendTurn", () => {
     expect(field(await readRow(path, 1), "turn_id")).toBe("b");
   });
 
-  it("produces exactly one line per turn even when a preview contains a newline", async () => {
+  it("produces exactly one line per turn even when a field contains a newline", async () => {
     const path = await tempCsv();
     await openCsv(path);
-    await appendTurn(path, turn({ promptPreview: "line one line two" }));
+    await appendTurn(path, turn({ promptPreview: "line one\nline two", sessionName: "a\r\nb" }));
 
     expect((await readFile(path, "utf8")).trim().split("\n")).toHaveLength(2);
+
+    const fields = await readRow(path);
+    expect(field(fields, "prompt_preview")).toBe("line one line two");
+    expect(field(fields, "session_name")).toBe("a b");
+  });
+
+  // A newline inside a field would split the row across physical lines, and the
+  // trailing fragment then reads as a row of its own. That fabricates a turn id,
+  // which would make the next real turn look like a duplicate and be skipped.
+  it("cannot have a turn id or turn number fabricated by a newline inside a field", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    await appendTurn(
+      path,
+      turn({ turnNumber: 1, turnId: "turn-a", promptPreview: "one\n9,9,9,9,42,injected,x" }),
+    );
+
+    const state = await openCsv(path);
+
+    expect([...state.turnIds]).toEqual(["turn-a"]);
+    expect(state.maxTurnNumber).toBe(1);
   });
 });
