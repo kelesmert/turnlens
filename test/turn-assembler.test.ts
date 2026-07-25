@@ -48,6 +48,10 @@ describe("TurnAssembler with cumulative counters", () => {
     expect(turns[0]?.at).toBe("2026-07-22T02:31:05.000Z");
   });
 
+  // Cumulative totals transcribed from a real session where a turn was
+  // interrupted, at file offsets 249 (complete), 261 (usage), 264 (abort),
+  // 278-311 (usage), 312 (complete). Ignoring the abort merged the two turns
+  // into a single 1,039,876-token row.
   it("records an aborted turn separately instead of billing it to the next turn", () => {
     const turns = drain(
       [
@@ -58,7 +62,9 @@ describe("TurnAssembler with cumulative counters", () => {
         { kind: "turnAbort", at: "t5", turnId: "019f87c1", reason: "interrupted" },
         { kind: "turnStart", at: "t6", turnId: "019f87c2" },
         { kind: "usage", at: "t7", usage: cumulative(2_485_410) },
-        { kind: "turnEnd", at: "t8", turnId: "019f87c2" },
+        { kind: "usage", at: "t8", usage: cumulative(2_879_190) },
+        { kind: "usage", at: "t9", usage: cumulative(3_151_373) },
+        { kind: "turnEnd", at: "t10", turnId: "019f87c2" },
       ],
       "cumulative",
     );
@@ -68,7 +74,8 @@ describe("TurnAssembler with cumulative counters", () => {
     expect(turns[1]?.turnId).toBe("019f87c1");
     expect(turns[1]?.usage.total).toBe(121_334);
     expect(turns[2]?.status).toBe("completed");
-    expect(turns[2]?.usage.total).toBe(252_579);
+    expect(turns[2]?.usage.total).toBe(918_542);
+    expect(turns.map((turn) => turn.usage.total)).not.toContain(1_039_876);
   });
 
   it("suppresses a boundary that consumed no tokens but still advances the baseline", () => {
