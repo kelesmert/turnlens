@@ -78,6 +78,20 @@ describe("TurnAssembler with cumulative counters", () => {
     expect(turns.map((turn) => turn.usage.total)).not.toContain(1_039_876);
   });
 
+  // How long the user let an interrupted turn run is the whole reason it was
+  // interrupted, so it is reported like any other duration rather than dropped.
+  it("carries the duration of an aborted turn through to the closed turn", () => {
+    const turns = drain(
+      [
+        { kind: "usage", at: "t1", usage: cumulative(30_740) },
+        { kind: "turnAbort", at: "t2", turnId: "019f9a00", reason: "interrupted", durationMs: 11_452 },
+      ],
+      "cumulative",
+    );
+
+    expect(turns[0]?.durationMs).toBe(11_452);
+  });
+
   it("suppresses a boundary that consumed no tokens but still advances the baseline", () => {
     const turns = drain(
       [

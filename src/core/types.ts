@@ -51,6 +51,8 @@ export type ProviderEvent =
       readonly at: string;
       readonly turnId?: string;
       readonly reason?: string;
+      /** How long the turn ran before it was interrupted, when the provider says. */
+      readonly durationMs?: number;
     }
   | {
       readonly kind: "usage";

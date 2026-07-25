@@ -116,12 +116,14 @@ function parseEventMessage(
     case "turn_aborted": {
       const turnId = collapseWhitespace(payload["turn_id"]);
       const reason = collapseWhitespace(payload["reason"]);
+      const durationMs = toFiniteFloat(payload["duration_ms"]);
       return [
         {
           kind: "turnAbort",
           at,
           ...(turnId === "" ? {} : { turnId }),
           ...(reason === "" ? {} : { reason }),
+          ...(durationMs === undefined ? {} : { durationMs }),
         },
       ];
     }

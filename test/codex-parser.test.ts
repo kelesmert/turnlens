@@ -189,6 +189,23 @@ describe("parseCodexRecord reads turn boundaries", () => {
     ).toEqual([{ kind: "turnAbort", at: "t", reason: "interrupted" }]);
   });
 
+  it("keeps the duration Codex reports for an interrupted turn", () => {
+    expect(
+      parseCodexRecord({
+        type: "event_msg",
+        timestamp: "t",
+        payload: {
+          type: "turn_aborted",
+          turn_id: "019f9a00",
+          reason: "interrupted",
+          duration_ms: 11_452,
+        },
+      }),
+    ).toEqual([
+      { kind: "turnAbort", at: "t", turnId: "019f9a00", reason: "interrupted", durationMs: 11_452 },
+    ]);
+  });
+
   it("emits a compaction boundary for context_compacted", () => {
     expect(
       parseCodexRecord({ type: "event_msg", timestamp: "t", payload: { type: "context_compacted" } }),

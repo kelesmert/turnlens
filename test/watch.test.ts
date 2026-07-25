@@ -68,6 +68,12 @@ describe("importHistory over a real Codex session", () => {
     expect(Number(column(aborted[0] ?? [], "total_tokens"))).toBe(121_334);
   });
 
+  it("records how long the interrupted turn ran before it was stopped", () => {
+    const aborted = rows.filter((row) => column(row, "status") === "aborted");
+
+    expect(column(aborted[0] ?? [], "duration_ms")).toBe("23942");
+  });
+
   it("reproduces the turn counts taken from the session by hand", () => {
     const statuses = columnValues("status");
 

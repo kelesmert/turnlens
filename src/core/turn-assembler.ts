@@ -104,6 +104,7 @@ export class TurnAssembler {
           status: "aborted",
           at: event.at,
           ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
+          ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
         });
 
       case "boundary":
