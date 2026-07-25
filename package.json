@@ -1,0 +1,28 @@
+{
+  "name": "turnscope",
+  "version": "0.0.0",
+  "description": "Per-turn token and cost monitoring for AI coding agents",
+  "license": "MIT",
+  "author": "Mert Keles",
+  "type": "module",
+  "bin": {
+    "turnscope": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "dev": "node --experimental-strip-types src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

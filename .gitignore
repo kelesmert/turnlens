@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Runtime output from the legacy Python watcher
+codex-turn-usage/
+.codex-turn-watch-locks/
+
+# Runtime output from the TypeScript CLI
+turnscope-usage/
+.turnscope-locks/
