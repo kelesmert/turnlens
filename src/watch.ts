@@ -1,15 +1,19 @@
 import { appendTurn, openCsv, turnRowKey } from "./core/store/csv.js";
 import { byteLength, followLines, readCompleteLines } from "./core/tail.js";
 import { TurnAssembler } from "./core/turn-assembler.js";
+import { computeTurnCost } from "./pricing/cost.js";
 import { formatTableHeader, formatTurnRow } from "./ui/live-table.js";
 import type { AssembledTurn } from "./core/turn-assembler.js";
 import type { NormalizedTurn, ProviderAdapter, SessionRef, TokenUsage } from "./core/types.js";
+import type { PricingResolver } from "./pricing/types.js";
 
 export interface WatchOptions {
   readonly session: SessionRef;
   readonly adapter: ProviderAdapter;
   readonly csvPath: string;
   readonly includePromptPreview: boolean;
+  /** Resolves model rates. Constructed once per run so its cache is shared. */
+  readonly pricing: PricingResolver;
   readonly signal?: AbortSignal;
   readonly write?: (line: string) => void;
 }
@@ -141,12 +145,22 @@ async function consumeLine(
   return recorded;
 }
 
+/**
+ * Turns an assembled turn into a recordable row, including its cost.
+ *
+ * Stays synchronous: the resolver loaded every layer before monitoring started,
+ * so this is a map lookup. Pricing happens here rather than in the assembler so
+ * the assembler stays pure and clock-free.
+ */
 function normalise(
   assembled: AssembledTurn,
   turnId: string,
   turnNumber: number,
   options: WatchOptions,
 ): NormalizedTurn {
+  const lookup = options.pricing.lookup(assembled.model);
+  const cost = computeTurnCost(assembled.usage, lookup.pricing);
+
   return {
     provider: options.adapter.id,
     sessionId: options.session.sessionId,
@@ -160,6 +174,9 @@ function normalise(
     model: assembled.model,
     reasoningEffort: assembled.reasoningEffort,
     promptPreview: assembled.promptPreview,
+    costStatus: cost.status,
+    pricingVersion: lookup.version,
+    ...(cost.amountUsd === undefined ? {} : { costUsd: cost.amountUsd }),
     ...(assembled.durationMs === undefined ? {} : { durationMs: assembled.durationMs }),
     ...(assembled.rateLimits === undefined ? {} : { rateLimits: assembled.rateLimits }),
   };

@@ -17,8 +17,20 @@ function turn(overrides: Partial<NormalizedTurn> = {}): NormalizedTurn {
     model: "gpt-5.6-sol",
     reasoningEffort: "medium",
     promptPreview: "sadece a yaz",
+    costStatus: "priced",
+    costUsd: 0.038_044,
+    pricingVersion: "litellm@sha256:0123456789ab",
     ...overrides,
   };
+}
+
+const ABSENT_CELL = "-";
+
+/** A turn with no cost at all: the property is omitted, never set to undefined. */
+function unpricedTurn(): NormalizedTurn {
+  const { costUsd, ...rest } = turn();
+  void costUsd;
+  return { ...rest, costStatus: "model_unknown" };
 }
 
 describe("formatWindowLabel", () => {
@@ -123,5 +135,29 @@ describe("formatTurnRow", () => {
 
   it("keeps a row on a single line", () => {
     expect(formatTurnRow(turn())[0]).not.toContain("\n");
+  });
+});
+
+describe("cost column", () => {
+  it("shows the cost of the turn", () => {
+    const [row] = formatTurnRow(turn({ costUsd: 0.038_044 }));
+    expect(row).toContain("$0.0380");
+  });
+
+  it("shows a dash rather than a zero when the turn could not be priced", () => {
+    const [row] = formatTurnRow(unpricedTurn());
+    expect(row).toContain(ABSENT_CELL);
+    expect(row).not.toContain("$0.0000");
+  });
+
+  it("labels the column in the header", () => {
+    const [header] = formatTableHeader();
+    expect(header).toContain("Cost");
+  });
+
+  it("keeps the header and a row the same width", () => {
+    const [header] = formatTableHeader({ primaryWindowMinutes: 10_080 });
+    const [row] = formatTurnRow(turn({ rateLimits: { primaryWindowMinutes: 10_080 } }));
+    expect(row?.length).toBe(header?.length);
   });
 });

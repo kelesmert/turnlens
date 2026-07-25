@@ -6,6 +6,8 @@ import { acquireSessionLock } from "./core/lock.js";
 import { toFiniteInt } from "./core/numbers.js";
 import { resolveSessionLockDir } from "./core/paths.js";
 import { truncate } from "./core/text.js";
+import { resolvePricingCachePath } from "./pricing/cache.js";
+import { createPricingResolver } from "./pricing/resolver.js";
 import { PROVIDER_IDS, getAdapter, isProviderId } from "./providers/registry.js";
 import { confirmYesNo, decidePromptPreview } from "./ui/prompts.js";
 import { summariseCsv } from "./ui/summary.js";
@@ -86,6 +88,14 @@ async function main(): Promise<void> {
   // watcher started elsewhere.
   const lock = await acquireSessionLock(resolveSessionLockDir(), selected.path);
 
+  // Built before monitoring starts, so every network moment in a run happens
+  // here and `lookup` stays synchronous inside the tailing loop.
+  const pricing = await createPricingResolver({
+    offline: false,
+    cachePath: resolvePricingCachePath(),
+    notify: (line) => write([line]),
+  });
+
   // No terminal is spawned: the CLI runs in the terminal that invoked it, which
   // is why Ctrl+C simply stops monitoring (known-bugs.md P2-3).
   //
@@ -116,6 +126,7 @@ async function main(): Promise<void> {
       adapter,
       csvPath,
       includePromptPreview,
+      pricing,
       signal: controller.signal,
     });
   } finally {

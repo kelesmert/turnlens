@@ -6,7 +6,9 @@ import { CSV_HEADER, openCsv, parseCsvRow } from "../src/core/store/csv.js";
 import { byteLength } from "../src/core/tail.js";
 import { createCodexAdapter } from "../src/providers/codex/sessions.js";
 import { importHistory, runWatch } from "../src/watch.js";
+import { createPricingResolver } from "../src/pricing/resolver.js";
 import type { SessionRef } from "../src/core/types.js";
+import type { PricingResolver } from "../src/pricing/types.js";
 
 /**
  * An anonymized slice of a real Codex session, produced by
@@ -25,6 +27,14 @@ const SESSION: SessionRef = {
 
 let rows: readonly (readonly string[])[];
 
+/** Offline so the suite never touches the network, and cached outside the real home. */
+async function offlineResolver(): Promise<PricingResolver> {
+  return await createPricingResolver({
+    offline: true,
+    cachePath: join(await mkdtemp(join(tmpdir(), "turnscope-watch-pricing-")), "litellm.json"),
+  });
+}
+
 function column(row: readonly string[], name: (typeof CSV_HEADER)[number]): string {
   return row[CSV_HEADER.indexOf(name)] ?? "";
 }
@@ -42,6 +52,7 @@ beforeAll(async () => {
     adapter: createCodexAdapter(),
     csvPath,
     includePromptPreview: false,
+    pricing: await offlineResolver(),
     stopAtByte: await byteLength(FIXTURE),
   });
 
@@ -107,8 +118,11 @@ describe("importHistory over a real Codex session", () => {
     expect(columnValues("prompt_preview").every((value) => value === "")).toBe(true);
   });
 
-  it("leaves the cost column empty rather than claiming a turn was free", () => {
-    expect(columnValues("estimated_cost_usd").every((value) => value === "")).toBe(true);
+  // Superseded by "importHistory prices turns from the embedded snapshot" below,
+  // which asserts the costs are present and correct. What survives from the
+  // original is the rule it was protecting: never a 0 standing in for unknown.
+  it("never writes a zero cost for a turn that consumed tokens", () => {
+    expect(columnValues("estimated_cost_usd").some((value) => Number(value) === 0)).toBe(false);
   });
 
   it("leaves the source session file byte-identical", async () => {
@@ -118,6 +132,7 @@ describe("importHistory over a real Codex session", () => {
       adapter: createCodexAdapter(),
       csvPath: join(await mkdtemp(join(tmpdir(), "turnscope-watch-")), "again.csv"),
       includePromptPreview: false,
+      pricing: await offlineResolver(),
       stopAtByte: await byteLength(FIXTURE),
     });
 
@@ -131,6 +146,7 @@ describe("importHistory over a real Codex session", () => {
       adapter: createCodexAdapter(),
       csvPath,
       includePromptPreview: false,
+      pricing: await offlineResolver(),
       stopAtByte: await byteLength(FIXTURE),
     };
     await openCsv(csvPath);
@@ -168,6 +184,7 @@ describe("runWatch over a session that is still being written", () => {
       adapter: createCodexAdapter(),
       csvPath,
       includePromptPreview: false,
+      pricing: await offlineResolver(),
       signal: controller.signal,
       write: (line) => printed.push(line),
     });
@@ -216,3 +233,28 @@ async function waitForRows(
 
   throw new Error(`Timed out waiting for ${count} rows in ${csvPath}`);
 }
+
+describe("importHistory prices turns from the embedded snapshot", () => {
+  // 4018 * 5e-6 + 11008 * 5e-7 + 415 * 3e-5 = 0.038044
+  it("prices the first turn of the fixture at the published rates", () => {
+    const first = rows[0] ?? [];
+
+    expect(column(first, "model")).toBe("gpt-5.6-sol");
+    expect(column(first, "estimated_cost_usd")).toBe("0.038044");
+    expect(column(first, "cost_status")).toBe("priced");
+    expect(column(first, "pricing_version")).toMatch(/^litellm@sha256:[0-9a-f]{12}$/u);
+  });
+
+  it("prices every turn of the fixture, since its model is a known one", () => {
+    expect(columnValues("cost_status").every((status) => status === "priced")).toBe(true);
+    expect(columnValues("estimated_cost_usd").every((cost) => Number(cost) > 0)).toBe(true);
+  });
+
+  // The aborted turn must carry its own cost, not the next turn's.
+  it("prices the aborted turn separately", () => {
+    const aborted = rows.filter((row) => column(row, "status") === "aborted");
+
+    expect(Number(column(aborted[0] ?? [], "estimated_cost_usd"))).toBeGreaterThan(0);
+    expect(column(aborted[0] ?? [], "cost_status")).toBe("priced");
+  });
+});

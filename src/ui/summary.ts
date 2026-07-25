@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { toFiniteInt } from "../core/numbers.js";
+import { toFiniteFloat, toFiniteInt } from "../core/numbers.js";
 import { CSV_HEADER, parseCsvRow } from "../core/store/csv.js";
 
 const RULE_WIDTH = 72;
@@ -18,9 +18,10 @@ interface Totals {
 /**
  * Summarises the turns recorded in one session CSV.
  *
- * Describes the contents of that file only, never the account as a whole. Cost
- * is reported as not implemented rather than as 0: native pricing arrives in a
- * later plan, and a zero would read as "this was free".
+ * Describes the contents of that file only, never the account as a whole. The
+ * cost total covers only the turns that could be priced; turns that could not
+ * be are counted separately rather than folded in as free, because a zero and
+ * an unknown are different facts and only one of them belongs in a sum.
  */
 export async function summariseCsv(path: string): Promise<readonly string[]> {
   let contents: string;
@@ -47,6 +48,10 @@ export async function summariseCsv(path: string): Promise<readonly string[]> {
   const tools = new Map<string, number>();
   const durations: number[] = [];
   let aborted = 0;
+  let costUsd = 0;
+  let pricedTurns = 0;
+  const unpriced = new Map<string, number>();
+  const pricingVersions = new Map<string, number>();
 
   for (const row of rows) {
     // Parsed as CSV rather than split on commas: a session name or prompt
@@ -66,6 +71,15 @@ export async function summariseCsv(path: string): Promise<readonly string[]> {
     countValue(models, read("model"));
     countValue(efforts, read("reasoning_effort"));
     addToolCalls(tools, read("tool_calls_json"));
+
+    const rowCost = toFiniteFloat(read("estimated_cost_usd"));
+    const costStatus = read("cost_status");
+    if (rowCost === undefined) countValue(unpriced, costStatus === "" ? "unknown" : costStatus);
+    else {
+      costUsd += rowCost;
+      pricedTurns += 1;
+    }
+    countValue(pricingVersions, read("pricing_version"));
 
     const durationMs = toFiniteInt(read("duration_ms"));
     if (durationMs !== undefined) durations.push(durationMs);
@@ -87,11 +101,16 @@ export async function summariseCsv(path: string): Promise<readonly string[]> {
     entry("Reasoning tokens", formatCount(totals.reasoning)),
     entry("Total tokens", formatCount(totals.total)),
     entry("Tool calls", formatCount(totals.toolCalls)),
-    entry("Estimated cost", "not implemented yet"),
+    entry("Estimated cost", pricedTurns === 0 ? "unavailable" : `$${costUsd.toFixed(6)}`),
     entry("Average duration", formatSeconds(average(durations))),
     entry("Longest duration", formatSeconds(longest(durations))),
   ];
 
+  if (unpriced.size > 0) {
+    const total = [...unpriced.values()].reduce((sum, count) => sum + count, 0);
+    lines.push(entry("Unpriced turns", `${formatCount(total)} (${describe(unpriced)})`));
+  }
+  if (pricingVersions.size > 0) lines.push(entry("Pricing data", describe(pricingVersions)));
   if (models.size > 0) lines.push(entry("Models", describe(models)));
   if (efforts.size > 0) lines.push(entry("Reasoning efforts", describe(efforts)));
   if (tools.size > 0) lines.push(entry("Tool breakdown", describe(tools)));

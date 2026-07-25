@@ -2,6 +2,7 @@ import { truncate } from "../core/text.js";
 import type { NormalizedTurn, RateLimits } from "../core/types.js";
 
 const MODEL_WIDTH = 18;
+const COST_WIDTH = 10;
 const PREVIEW_WIDTH = 20;
 const ABSENT = "-";
 
@@ -57,6 +58,7 @@ export function formatTurnRow(turn: NormalizedTurn): readonly string[] {
     formatCount(turn.usage.output),
     formatCount(turn.usage.reasoning),
     formatCount(turn.usage.total),
+    formatCost(turn.costUsd),
     formatPercent(turn.rateLimits?.primaryUsedPercent),
     formatPercent(turn.rateLimits?.secondaryUsedPercent),
     formatCount(countToolCalls(turn)),
@@ -89,6 +91,7 @@ function describeColumns(rateLimits: RateLimits | undefined): readonly Column[] 
     { label: "Output", width: 9, alignRight: true },
     { label: "Reason", width: 9, alignRight: true },
     { label: "Total", width: 12, alignRight: true },
+    { label: "Cost", width: COST_WIDTH, alignRight: true },
     { label: formatWindowLabel(rateLimits?.primaryWindowMinutes), width: 8, alignRight: true },
     { label: formatWindowLabel(rateLimits?.secondaryWindowMinutes), width: 8, alignRight: true },
     { label: "Tools", width: 5, alignRight: true },
@@ -122,6 +125,17 @@ function formatCount(value: number): string {
 
 function formatPercent(value: number | undefined): string {
   return value === undefined ? ABSENT : `${value.toFixed(1)}%`;
+}
+
+/**
+ * Renders a turn cost for a terminal.
+ *
+ * Four decimals is the finest a reader can compare at a glance; the CSV keeps
+ * six for arithmetic. An unpriced turn reads as `-`, never as `$0.0000`, which
+ * would be indistinguishable from a genuinely free turn.
+ */
+function formatCost(amountUsd: number | undefined): string {
+  return amountUsd === undefined ? ABSENT : `$${amountUsd.toFixed(4)}`;
 }
 
 function formatDuration(durationMs: number | undefined): string {

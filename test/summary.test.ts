@@ -25,8 +25,18 @@ function turn(overrides: Partial<NormalizedTurn> = {}): NormalizedTurn {
     model: "gpt-5.6-sol",
     reasoningEffort: "medium",
     promptPreview: "",
+    costStatus: "priced",
+    costUsd: 0.038_044,
+    pricingVersion: "litellm@sha256:0123456789ab",
     ...overrides,
   };
+}
+
+/** A turn with no cost at all: the property is omitted, never set to undefined. */
+function unpricedTurn(overrides: Partial<NormalizedTurn> = {}): NormalizedTurn {
+  const { costUsd, ...rest } = turn(overrides);
+  void costUsd;
+  return { ...rest, costStatus: "model_unknown" };
 }
 
 async function summaryOf(turns: readonly NormalizedTurn[]): Promise<string> {
@@ -77,11 +87,11 @@ describe("summariseCsv", () => {
     expect(text).toContain("exec=5");
   });
 
-  it("says cost is not implemented rather than reporting zero", async () => {
-    const text = await summaryOf([turn()]);
+  it("never reports an unpriced turn as free", async () => {
+    const text = await summaryOf([unpricedTurn()]);
 
-    expect(text).toMatch(/not implemented/iu);
     expect(text).not.toContain("$0.0000");
+    expect(text).not.toContain("$0.000000");
   });
 
   it("reports average and longest duration only from turns that recorded one", async () => {
@@ -112,5 +122,31 @@ describe("summariseCsv", () => {
 
     expect(text).toContain("Total tokens            : 1,050");
     expect(text).toContain("gpt-5.6-sol=1");
+  });
+});
+
+describe("summariseCsv reports cost", () => {
+  it("totals the costs it can and counts the turns it cannot price", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    await appendTurn(path, turn({ turnNumber: 1, turnId: "a", costUsd: 0.038_044 }));
+    await appendTurn(path, turn({ turnNumber: 2, turnId: "b", costUsd: 0.001_956 }));
+    await appendTurn(path, unpricedTurn({ turnNumber: 3, turnId: "c" }));
+
+    const text = (await summariseCsv(path)).join("\n");
+
+    expect(text).toContain("Estimated cost          : $0.040000");
+    expect(text).toContain("Unpriced turns          : 1 (model_unknown=1)");
+    expect(text).toContain("Pricing data            : litellm@sha256:0123456789ab");
+    expect(text).not.toContain("not implemented yet");
+  });
+
+  it("says so plainly when nothing could be priced", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    await appendTurn(path, unpricedTurn());
+
+    const text = (await summariseCsv(path)).join("\n");
+    expect(text).toContain("Estimated cost          : unavailable");
   });
 });
