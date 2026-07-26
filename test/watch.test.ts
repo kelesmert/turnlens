@@ -31,7 +31,7 @@ let rows: readonly (readonly string[])[];
 async function offlineResolver(): Promise<PricingResolver> {
   return await createPricingResolver({
     offline: true,
-    cachePath: join(await mkdtemp(join(tmpdir(), "turnscope-watch-pricing-")), "litellm.json"),
+    cachePath: join(await mkdtemp(join(tmpdir(), "turnlens-watch-pricing-")), "litellm.json"),
   });
 }
 
@@ -44,7 +44,7 @@ function columnValues(name: (typeof CSV_HEADER)[number]): readonly string[] {
 }
 
 beforeAll(async () => {
-  const csvPath = join(await mkdtemp(join(tmpdir(), "turnscope-watch-")), "session.csv");
+  const csvPath = join(await mkdtemp(join(tmpdir(), "turnlens-watch-")), "session.csv");
   await openCsv(csvPath);
 
   await importHistory({
@@ -130,7 +130,7 @@ describe("importHistory over a real Codex session", () => {
     await importHistory({
       session: SESSION,
       adapter: createCodexAdapter(),
-      csvPath: join(await mkdtemp(join(tmpdir(), "turnscope-watch-")), "again.csv"),
+      csvPath: join(await mkdtemp(join(tmpdir(), "turnlens-watch-")), "again.csv"),
       includePromptPreview: false,
       pricing: await offlineResolver(),
       stopAtByte: await byteLength(FIXTURE),
@@ -140,7 +140,7 @@ describe("importHistory over a real Codex session", () => {
   });
 
   it("does not re-record a turn when the same history is imported twice", async () => {
-    const csvPath = join(await mkdtemp(join(tmpdir(), "turnscope-watch-")), "twice.csv");
+    const csvPath = join(await mkdtemp(join(tmpdir(), "turnlens-watch-")), "twice.csv");
     const options = {
       session: SESSION,
       adapter: createCodexAdapter(),
@@ -171,7 +171,7 @@ describe("runWatch over a session that is still being written", () => {
 
   it("records the interrupted turn live, without billing it to the next turn", async () => {
     const records = (await readFile(FIXTURE, "utf8")).split("\n").filter((l) => l.trim() !== "");
-    const dir = await mkdtemp(join(tmpdir(), "turnscope-live-"));
+    const dir = await mkdtemp(join(tmpdir(), "turnlens-live-"));
     const sessionPath = join(dir, "growing.jsonl");
     const csvPath = join(dir, "session.csv");
 

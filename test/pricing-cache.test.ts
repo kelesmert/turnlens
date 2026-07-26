@@ -11,7 +11,7 @@ import {
 import type { PricingCache } from "../src/pricing/cache.js";
 
 async function tempHome(): Promise<string> {
-  return await mkdtemp(join(tmpdir(), "turnscope-pricing-"));
+  return await mkdtemp(join(tmpdir(), "turnlens-pricing-"));
 }
 
 function cache(overrides: Partial<PricingCache> = {}): PricingCache {
@@ -27,13 +27,13 @@ function cache(overrides: Partial<PricingCache> = {}): PricingCache {
 describe("resolvePricingCachePath", () => {
   it("puts the cache under the user's home directory", () => {
     const path = resolvePricingCachePath({ HOME: "/home/someone" });
-    expect(path).toBe(join("/home/someone", ".turnscope", "pricing", "litellm.json"));
+    expect(path).toBe(join("/home/someone", ".turnlens", "pricing", "litellm.json"));
   });
 
   // Tests must never touch the real home directory, and a user may want the
   // cache somewhere else.
-  it("honours TURNSCOPE_HOME over the home directory", () => {
-    const path = resolvePricingCachePath({ TURNSCOPE_HOME: "/tmp/ts", HOME: "/home/someone" });
+  it("honours TURNLENS_HOME over the home directory", () => {
+    const path = resolvePricingCachePath({ TURNLENS_HOME: "/tmp/ts", HOME: "/home/someone" });
     expect(path).toBe(join("/tmp/ts", "pricing", "litellm.json"));
   });
 });

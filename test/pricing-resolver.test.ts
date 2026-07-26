@@ -9,7 +9,7 @@ import type { PricingFetchResult } from "../src/pricing/fetch.js";
 import { SNAPSHOT_VERSION } from "../src/pricing/snapshot.generated.js";
 
 async function cachePath(): Promise<string> {
-  return join(await mkdtemp(join(tmpdir(), "turnscope-resolver-")), "litellm.json");
+  return join(await mkdtemp(join(tmpdir(), "turnlens-resolver-")), "litellm.json");
 }
 
 const FETCHED_DOCUMENT = JSON.stringify({

@@ -200,7 +200,7 @@ function readToolCalls(content: unknown, at: string): readonly ProviderEvent[] {
  * Closes a turn on compaction.
  *
  * `subtype` is the discriminator rather than the presence of `compactMetadata`,
- * because the metadata's shape is richer than anything TurnScope reads and a
+ * because the metadata's shape is richer than anything TurnLens reads and a
  * future field there should not change whether a turn closes.
  */
 function parseSystem(

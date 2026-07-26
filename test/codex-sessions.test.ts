@@ -11,7 +11,7 @@ import {
 import { getAdapter, isProviderId } from "../src/providers/registry.js";
 
 async function fakeCodexHome(): Promise<string> {
-  return await mkdtemp(join(tmpdir(), "turnscope-codex-"));
+  return await mkdtemp(join(tmpdir(), "turnlens-codex-"));
 }
 
 describe("resolveCodexPaths", () => {

@@ -1,12 +1,12 @@
 {
-  "name": "turnscope",
+  "name": "turnlens",
   "version": "0.0.0",
   "description": "Per-turn token and cost monitoring for AI coding agents",
   "license": "MIT",
   "author": "Mert Keles",
   "type": "module",
   "bin": {
-    "turnscope": "dist/cli.js"
+    "turnlens": "dist/cli.js"
   },
   "engines": {
     "node": ">=20.0.0"

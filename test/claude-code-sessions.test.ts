@@ -10,7 +10,7 @@ import {
 import { PROVIDER_IDS, getAdapter, isProviderId } from "../src/providers/registry.js";
 
 async function makeRoot(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "turnscope-claude-"));
+  return mkdtemp(join(tmpdir(), "turnlens-claude-"));
 }
 
 describe("resolveClaudeCodePaths", () => {

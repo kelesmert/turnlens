@@ -18,7 +18,7 @@ function newController(): AbortController {
 }
 
 async function tempFile(contents: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "turnscope-tail-"));
+  const dir = await mkdtemp(join(tmpdir(), "turnlens-tail-"));
   const path = join(dir, "session.jsonl");
   await writeFile(path, contents, "utf8");
   return path;

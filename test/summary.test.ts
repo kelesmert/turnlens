@@ -8,7 +8,7 @@ import { emptyUsage } from "../src/core/usage.js";
 import type { NormalizedTurn } from "../src/core/types.js";
 
 async function tempCsv(): Promise<string> {
-  return join(await mkdtemp(join(tmpdir(), "turnscope-sum-")), "session.csv");
+  return join(await mkdtemp(join(tmpdir(), "turnlens-sum-")), "session.csv");
 }
 
 function turn(overrides: Partial<NormalizedTurn> = {}): NormalizedTurn {
@@ -52,7 +52,7 @@ describe("summariseCsv", () => {
   });
 
   it("reports unreadable rather than inventing zeroes when the file is missing", async () => {
-    const path = join(await mkdtemp(join(tmpdir(), "turnscope-sum-")), "absent.csv");
+    const path = join(await mkdtemp(join(tmpdir(), "turnlens-sum-")), "absent.csv");
 
     expect((await summariseCsv(path)).join("\n")).toMatch(/unavailable|could not be read/iu);
   });

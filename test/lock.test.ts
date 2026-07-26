@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { acquireSessionLock } from "../src/core/lock.js";
 
 async function tempDir(): Promise<string> {
-  return await mkdtemp(join(tmpdir(), "turnscope-lock-"));
+  return await mkdtemp(join(tmpdir(), "turnlens-lock-"));
 }
 
 describe("acquireSessionLock", () => {

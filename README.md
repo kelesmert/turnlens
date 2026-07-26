@@ -1,8 +1,8 @@
-# TurnScope
+# TurnLens
 
 Per-turn token and cost monitoring for AI coding agents.
 
-Other tools tell you what a session cost, or what a day cost. TurnScope tells you
+Other tools tell you what a session cost, or what a day cost. TurnLens tells you
 what **one turn** cost — the prompt you just sent, priced the moment the agent
 finishes answering, with the tool calls it made and the tokens it burned.
 
@@ -27,14 +27,14 @@ Requires Node 20 or newer. No runtime dependencies.
 **Not on npm yet.** Until it is published, run it from source:
 
 ```bash
-git clone https://github.com/kelesmert/turnscope.git
-cd turnscope
+git clone https://github.com/kelesmert/turnlens.git
+cd turnlens
 npm install
 npm run build
 node dist/cli.js --help
 ```
 
-Once published, `npx turnscope@latest` will be the whole install.
+Once published, `npx turnlens@latest` will be the whole install.
 
 ## Usage
 
@@ -44,7 +44,7 @@ Run it, pick a session, leave it running in a second terminal while you work.
 node dist/cli.js --provider claude-code
 ```
 
-TurnScope lists the sessions it can find, most recently active first, and asks
+TurnLens lists the sessions it can find, most recently active first, and asks
 which one to watch. It then follows that session's transcript and prints a row
 each time a turn closes. Stop with Ctrl+C; a summary is printed on exit.
 
@@ -75,15 +75,15 @@ answering the wrong question.
 One CSV per session, under the directory you ran the command in:
 
 ```
-turnscope-usage/<provider>/<session-id>.csv
+turnlens-usage/<provider>/<session-id>.csv
 ```
 
 Rows are appended and never rewritten. A closed turn keeps the price that was in
 effect when it closed, and records which pricing list that was, so a rate change
 upstream never moves a number you already have.
 
-TurnScope's own state — the pricing cache and session locks — lives under
-`~/.turnscope/`, overridable with `TURNSCOPE_HOME`.
+TurnLens's own state — the pricing cache and session locks — lives under
+`~/.turnlens/`, overridable with `TURNLENS_HOME`.
 
 ### CSV columns
 
@@ -112,15 +112,15 @@ TurnScope's own state — the pricing cache and session locks — lives under
 | `secondary_used_percent`, `secondary_window_minutes` | Second rate-limit window, likewise |
 | `duration_ms` | How long the turn took, when the agent reports it |
 
-An empty `estimated_cost_usd` is always explained by `cost_status`. TurnScope
+An empty `estimated_cost_usd` is always explained by `cost_status`. TurnLens
 never records a cost of zero for a model it could not price: a zero would be
 indistinguishable from a free turn.
 
 ## Pricing
 
 Rates come from LiteLLM's published price list. Before monitoring starts — once
-per run, never while watching — TurnScope asks whether that list has changed and
-downloads it only if so, keeping it under `~/.turnscope/pricing/`. If the network
+per run, never while watching — TurnLens asks whether that list has changed and
+downloads it only if so, keeping it under `~/.turnlens/pricing/`. If the network
 is unreachable it falls back to that file, then to the list shipped inside the
 package, and carries on. `--offline` skips the check entirely.
 
@@ -132,12 +132,12 @@ recorded token counts, using a second implementation written separately from the
 one under test:
 
 ```bash
-npm run verify:costs -- turnscope-usage/claude-code/<session>.csv
+npm run verify:costs -- turnlens-usage/claude-code/<session>.csv
 ```
 
 ## Privacy
 
-**Session files are only ever read. TurnScope never writes to, moves or deletes
+**Session files are only ever read. TurnLens never writes to, moves or deletes
 them.**
 
 Prompt previews are **off by default**. Turning them on writes the first 20
@@ -152,10 +152,10 @@ price list.
 
 Worth knowing before you trust a number:
 
-- **One session at a time.** A lock under `~/.turnscope/locks/` stops two
+- **One session at a time.** A lock under `~/.turnlens/locks/` stops two
   watchers recording the same session twice.
 - **Subagent turns are not recorded.** Claude Code writes them to a separate
-  transcript that TurnScope does not read, so their cost appears nowhere.
+  transcript that TurnLens does not read, so their cost appears nowhere.
 - **Claude Code turns report no reasoning tokens.** Anthropic exposes no counter
   for them, so the column is 0 there while Codex fills it. This is a gap in the
   data, not an estimate.
@@ -164,7 +164,7 @@ Worth knowing before you trust a number:
   against a 200k or 272k threshold would misprice systematically.
 - **Priority, flex, batch and regional rates are unused**, for a simpler reason:
   nothing in a session file says which tier a request used.
-- **Turns that closed before you started watching are not recorded.** TurnScope
+- **Turns that closed before you started watching are not recorded.** TurnLens
   follows a transcript from where it is when it starts.
 
 ## Development
@@ -186,9 +186,9 @@ adds later cannot leak by default.
 ## Acknowledgment
 
 [ccusage](https://github.com/ryoppippi/ccusage) is a broader tool covering many
-more agents, and it was used throughout as an independent oracle: TurnScope's
+more agents, and it was used throughout as an independent oracle: TurnLens's
 token attribution and costs were verified against it on real sessions until they
-agreed to the cent. TurnScope is **not a fork of ccusage and is not affiliated
+agreed to the cent. TurnLens is **not a fork of ccusage and is not affiliated
 with it**.
 
 ## License

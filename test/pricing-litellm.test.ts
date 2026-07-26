@@ -81,7 +81,7 @@ describe("parseLiteLlmEntry", () => {
     });
   });
 
-  // Ignored on purpose: TurnScope cannot tell which request tier was used, and
+  // Ignored on purpose: TurnLens cannot tell which request tier was used, and
   // a turn total is not one request's context size. See the plan's Context.
   it("ignores tier variants such as the above-272k and priority rates", () => {
     expect(

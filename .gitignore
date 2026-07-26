@@ -3,8 +3,12 @@ dist/
 *.tsbuildinfo
 
 # Runtime output from the CLI. Locks and the pricing cache live under
-# ~/.turnscope/; the two dot-directories stay listed so leftovers from before
-# that move, and from the legacy Python watcher, are ignored.
+# ~/.turnlens/, so nothing internal lands here any more.
+turnlens-usage/
+
+# Output directories this tool wrote under earlier names, kept listed so
+# recordings made before the rename -- and before locks moved out of the working
+# directory, and before the Python watcher was replaced -- stay ignored.
 turnscope-usage/
 .turnscope-locks/
 codex-turn-usage/

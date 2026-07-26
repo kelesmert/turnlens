@@ -8,7 +8,7 @@ import type { NormalizedTurn } from "../src/core/types.js";
 import type { CostStatus } from "../src/pricing/types.js";
 
 async function tempCsv(): Promise<string> {
-  return join(await mkdtemp(join(tmpdir(), "turnscope-csv-")), "session.csv");
+  return join(await mkdtemp(join(tmpdir(), "turnlens-csv-")), "session.csv");
 }
 
 function turn(overrides: Partial<NormalizedTurn> = {}): NormalizedTurn {
@@ -123,7 +123,7 @@ describe("openCsv", () => {
   });
 
   it("creates any missing parent directories", async () => {
-    const path = join(await mkdtemp(join(tmpdir(), "turnscope-csv-")), "nested", "deep", "s.csv");
+    const path = join(await mkdtemp(join(tmpdir(), "turnlens-csv-")), "nested", "deep", "s.csv");
 
     await openCsv(path);
 

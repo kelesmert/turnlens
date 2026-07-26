@@ -2,17 +2,17 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 /**
- * Where TurnScope keeps its own state.
+ * Where TurnLens keeps its own state.
  *
  * This is deliberately not the working directory. Two kinds of file exist and
  * they belong in different places: output the user owns — the CSV — is written
- * next to wherever they ran the command, while TurnScope's internal state is
+ * next to wherever they ran the command, while TurnLens's internal state is
  * per user and per machine, not per directory.
  *
- * `TURNSCOPE_HOME` wins so tests and unusual setups never touch the real home.
+ * `TURNLENS_HOME` wins so tests and unusual setups never touch the real home.
  */
-export function resolveTurnscopeHome(env: NodeJS.ProcessEnv = process.env): string {
-  return env["TURNSCOPE_HOME"] ?? join(env["HOME"] ?? homedir(), ".turnscope");
+export function resolveTurnlensHome(env: NodeJS.ProcessEnv = process.env): string {
+  return env["TURNLENS_HOME"] ?? join(env["HOME"] ?? homedir(), ".turnlens");
 }
 
 /**
@@ -24,11 +24,11 @@ export function resolveTurnscopeHome(env: NodeJS.ProcessEnv = process.env): stri
  * which contradicted the one-watcher-per-session guarantee.
  */
 export function resolveSessionLockDir(env: NodeJS.ProcessEnv = process.env): string {
-  return join(resolveTurnscopeHome(env), "locks");
+  return join(resolveTurnlensHome(env), "locks");
 }
 
 /** The directory name for recorded turns, relative to where the command ran. */
-export const CSV_DIR_NAME = "turnscope-usage";
+export const CSV_DIR_NAME = "turnlens-usage";
 
 /**
  * Where one session's recorded turns are written.

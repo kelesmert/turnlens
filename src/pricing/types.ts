@@ -1,7 +1,7 @@
 /**
  * Per-token rates in US dollars for one model.
  *
- * Only the rates TurnScope can attribute from a session file are modelled.
+ * Only the rates TurnLens can attribute from a session file are modelled.
  * Priority, flex, batch, regional and long-context tier variants exist in the
  * source document and are deliberately absent: nothing in a session file says
  * which tier a request used, and a turn's token total is not one request's

@@ -1,11 +1,9 @@
 #!/usr/bin/env node
-import { readdir } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
-import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { acquireSessionLock } from "./core/lock.js";
 import { toFiniteInt } from "./core/numbers.js";
-import { CSV_DIR_NAME, resolveSessionCsvPath, resolveSessionLockDir } from "./core/paths.js";
+import { resolveSessionCsvPath, resolveSessionLockDir } from "./core/paths.js";
 import { truncate } from "./core/text.js";
 import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
@@ -19,10 +17,10 @@ const SESSION_LIST_LIMIT = 25;
 const RULE_WIDTH = 100;
 
 const HELP = [
-  "turnscope - per-turn token monitoring for AI coding agents",
+  "turnlens - per-turn token monitoring for AI coding agents",
   "",
-  "Usage: turnscope [--provider <id>] [--prompt-preview | --no-prompt-preview]",
-  "                 [--offline] [--refresh-pricing]",
+  "Usage: turnlens [--provider <id>] [--prompt-preview | --no-prompt-preview]",
+  "                [--offline] [--refresh-pricing]",
   "",
   `  --provider <id>      Agent to monitor. One of: ${PROVIDER_IDS.join(", ")}. Default: codex`,
   "  --prompt-preview     Record a 20-character preview of each prompt.",
@@ -35,10 +33,10 @@ const HELP = [
   "With neither preview flag, you are asked once at startup and the answer",
   "defaults to no. Piped input is never asked, and previews stay off.",
   "",
-  "Before monitoring starts, TurnScope asks LiteLLM whether its published price",
+  "Before monitoring starts, TurnLens asks LiteLLM whether its published price",
   "list has changed and downloads it only if so; the result is kept under",
-  "~/.turnscope/pricing/. If the network is unreachable it falls back to that",
-  "file, then to the list shipped with TurnScope, and carries on. Use --offline",
+  "~/.turnlens/pricing/. If the network is unreachable it falls back to that",
+  "file, then to the list shipped with TurnLens, and carries on. Use --offline",
   "to skip the check. Nothing is fetched while a session is being watched, and a",
   "turn whose model cannot be priced records no cost rather than zero.",
   "",
@@ -118,7 +116,6 @@ async function main(): Promise<void> {
         )
       : previewChoice === "enabled";
   const csvPath = resolveSessionCsvPath(process.cwd(), selected.provider, selected.sessionId);
-  write(await noticeForLegacyCsvLocation(process.cwd()));
 
   // Held for the whole run so one session is never watched twice. The lock lives
   // under the user's home, not the working directory: it covers a session file,
@@ -185,30 +182,6 @@ async function selectSession(sessions: readonly SessionRef[]): Promise<SessionRe
   const selected = sessions[toFiniteInt(answer.trim(), 0) - 1];
   if (selected === undefined) throw new Error(`Enter a number from 1 to ${sessions.length}.`);
   return selected;
-}
-
-/** Turns a session id into one safe filename component on every platform. */
-/**
- * Warns when recorded turns exist directly under the output directory.
- *
- * Recordings used to land there; they are now grouped by provider. TurnScope
- * does not move them: they are the user's own data, and a tool that silently
- * relocates files is a tool nobody can reason about. Saying where both live is
- * enough.
- */
-async function noticeForLegacyCsvLocation(cwd: string): Promise<readonly string[]> {
-  let entries: readonly string[];
-  try {
-    entries = await readdir(join(cwd, CSV_DIR_NAME));
-  } catch {
-    return [];
-  }
-
-  if (!entries.some((entry) => entry.endsWith(".csv"))) return [];
-  return [
-    `Note: earlier recordings are directly under ${CSV_DIR_NAME}/. New ones are`,
-    "grouped by provider. Nothing was moved; move them yourself if you want them together.",
-  ];
 }
 
 function write(lines: readonly string[]): void {

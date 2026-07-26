@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { resolveTurnscopeHome } from "../core/paths.js";
+import { resolveTurnlensHome } from "../core/paths.js";
 import { collapseWhitespace } from "../core/text.js";
 import type { RawPricingEntry } from "./types.js";
 
@@ -21,7 +21,7 @@ export interface PricingCache {
 
 /** Home resolution lives in one place; see `src/core/paths.ts` for why. */
 export function resolvePricingCachePath(env: NodeJS.ProcessEnv = process.env): string {
-  return join(resolveTurnscopeHome(env), "pricing", "litellm.json");
+  return join(resolveTurnlensHome(env), "pricing", "litellm.json");
 }
 
 /** Digest used as a pricing version. Same format as the embedded snapshot's. */

@@ -1,8 +1,8 @@
 // Re-derives the cost of every row in a session CSV and compares it with what
-// TurnScope recorded.
+// TurnLens recorded.
 //
 // Run: npm run build && node scripts/verify-costs.mjs [path/to/session.csv]
-// With no argument, the most recently modified CSV under turnscope-usage/ is used.
+// With no argument, the most recently modified CSV under turnlens-usage/ is used.
 //
 // Two design decisions make this a real check rather than a tautology.
 //
@@ -27,7 +27,7 @@ import { join } from "node:path";
 import { parseCsvRow, CSV_HEADER } from "../dist/core/store/csv.js";
 import { createPricingResolver } from "../dist/pricing/resolver.js";
 
-const OUTPUT_DIR = "turnscope-usage";
+const OUTPUT_DIR = "turnlens-usage";
 
 const path = process.argv[2] ?? (await mostRecentCsv());
 if (path === undefined) {
@@ -46,7 +46,7 @@ if (rows.length === 0) {
 // pull rates newer than the ones that priced these rows.
 const pricing = await createPricingResolver({
   offline: true,
-  cachePath: join(homedir(), ".turnscope", "pricing", "litellm.json"),
+  cachePath: join(homedir(), ".turnlens", "pricing", "litellm.json"),
 });
 
 console.log(`file    : ${path}`);

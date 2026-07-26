@@ -2,7 +2,7 @@
 // Regenerate with: npm run pricing:snapshot
 //
 // Source: LiteLLM model_prices_and_context_window.json (MIT, BerriAI/litellm),
-// filtered to the providers TurnScope monitors. TurnScope is not affiliated
+// filtered to the providers TurnLens monitors. TurnLens is not affiliated
 // with LiteLLM or with ccusage.
 import type { RawPricingEntry } from "./types.js";
 

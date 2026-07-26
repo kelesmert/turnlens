@@ -108,7 +108,7 @@ export async function openCsv(path: string): Promise<CsvState> {
         "",
         "The schema gained cost_status and pricing_version when native pricing",
         "was added. This file was written by an earlier version. It is left",
-        "untouched: move or rename it and TurnScope will start a new one.",
+        "untouched: move or rename it and TurnLens will start a new one.",
       ].join("\n"),
     );
   }

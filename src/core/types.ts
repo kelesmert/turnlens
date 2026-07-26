@@ -26,7 +26,7 @@ export interface TokenUsage {
 /**
  * Raw rate-limit values as reported by the agent.
  *
- * Informational only. TurnScope makes no claim about what quota these map to,
+ * Informational only. TurnLens makes no claim about what quota these map to,
  * and window labels are derived from the reported minutes rather than assumed.
  */
 export interface RateLimits {

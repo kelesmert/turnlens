@@ -2,7 +2,7 @@
 //
 // Run: npm run pricing:snapshot
 //
-// The output is committed. Only the providers TurnScope monitors and only the
+// The output is committed. Only the providers TurnLens monitors and only the
 // fields src/pricing/litellm.ts reads are kept, which turns a 1.67 MB document
 // into roughly 17 KB. Field names stay exactly as LiteLLM spells them so the
 // embedded data and a freshly fetched document are parsed by the same code.
@@ -75,7 +75,7 @@ const lines = [
   "// Regenerate with: npm run pricing:snapshot",
   "//",
   "// Source: LiteLLM model_prices_and_context_window.json (MIT, BerriAI/litellm),",
-  "// filtered to the providers TurnScope monitors. TurnScope is not affiliated",
+  "// filtered to the providers TurnLens monitors. TurnLens is not affiliated",
   "// with LiteLLM or with ccusage.",
   'import type { RawPricingEntry } from "./types.js";',
   "",
