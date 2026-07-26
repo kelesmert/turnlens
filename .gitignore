@@ -3,16 +3,8 @@ dist/
 *.tsbuildinfo
 
 # Runtime output from the CLI. Locks and the pricing cache live under
-# ~/.turnlens/, so nothing internal lands here any more.
+# ~/.turnlens/, so this is the only path the tool writes inside a project.
 turnlens-usage/
-
-# Output directories this tool wrote under earlier names, kept listed so
-# recordings made before the rename -- and before locks moved out of the working
-# directory, and before the Python watcher was replaced -- stay ignored.
-turnscope-usage/
-.turnscope-locks/
-codex-turn-usage/
-.codex-turn-watch-locks/
 
 # Development material. The published repository is the tool: source, tests and
 # the README. Everything below is how it got built, and stays on the machine it
