@@ -1,7 +1,8 @@
+import { createClaudeCodeAdapter } from "./claude-code/sessions.js";
 import { createCodexAdapter } from "./codex/sessions.js";
 import type { ProviderAdapter } from "../core/types.js";
 
-export const PROVIDER_IDS = ["codex"] as const;
+export const PROVIDER_IDS = ["codex", "claude-code"] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
@@ -14,6 +15,8 @@ export function getAdapter(id: ProviderId): ProviderAdapter {
   switch (id) {
     case "codex":
       return createCodexAdapter();
+    case "claude-code":
+      return createClaudeCodeAdapter();
     default: {
       // Exhaustiveness guard: adding a provider id without a case fails to compile.
       const unhandled: never = id;

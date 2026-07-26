@@ -193,7 +193,9 @@ describe("createCodexAdapter", () => {
 describe("provider registry", () => {
   it("recognises codex and rejects anything else", () => {
     expect(isProviderId("codex")).toBe(true);
-    expect(isProviderId("claude-code")).toBe(false);
+    // "claude-code" was the unsupported example here until Plan 3 shipped it;
+    // test/claude-code-sessions.test.ts now asserts that it is recognised.
+    expect(isProviderId("gemini")).toBe(false);
     expect(isProviderId("")).toBe(false);
   });
 
