@@ -13,8 +13,22 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
-    "declaration": true,
-    "sourceMap": true,
+    // Both deliberately off, and both were on until the package was measured.
+    //
+    // `declaration` emits .d.ts files for code that will be imported. This
+    // package is a `bin` with no `exports` field: nothing can import it, so the
+    // types described nothing anyone could use.
+    //
+    // `sourceMap` emits .js.map files that point at ../src/*.ts. `files` ships
+    // only dist, so in the published package those paths lead outside it to
+    // files that are not there, and no sourcesContent is embedded. They were
+    // unusable by construction rather than merely unused.
+    //
+    // Together they were 54 of the tarball's 84 files. Turn them back on only
+    // alongside the change that makes them meaningful -- shipping src, or
+    // adding an `exports` field.
+    "declaration": false,
+    "sourceMap": false,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
