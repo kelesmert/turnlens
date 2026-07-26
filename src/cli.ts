@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises";
-import { parseArgs } from "node:util";
 import { acquireSessionLock } from "./core/lock.js";
 import { toFiniteInt } from "./core/numbers.js";
 import { resolveSessionCsvPath, resolveSessionLockDir } from "./core/paths.js";
 import { truncate } from "./core/text.js";
+import { parseCliOptions } from "./options.js";
 import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
-import { PROVIDER_IDS, getAdapter, isProviderId } from "./providers/registry.js";
-import { confirmYesNo, decidePromptPreview } from "./ui/prompts.js";
+import { PROVIDER_IDS, getAdapter } from "./providers/registry.js";
+import { confirmYesNo } from "./ui/prompts.js";
 import { summariseCsv } from "./ui/summary.js";
 import { runWatch } from "./watch.js";
 import type { SessionRef } from "./core/types.js";
@@ -46,45 +46,21 @@ const HELP = [
 ].join("\n");
 
 async function main(): Promise<void> {
-  const { values } = parseArgs({
-    options: {
-      provider: { type: "string", default: "codex" },
-      // No defaults: an absent flag must stay distinguishable from an explicit
-      // one, because absent means "ask" while explicit means "do not ask".
-      "prompt-preview": { type: "boolean" },
-      "no-prompt-preview": { type: "boolean" },
-      offline: { type: "boolean", default: false },
-      "refresh-pricing": { type: "boolean", default: false },
-      help: { type: "boolean", default: false },
-    },
-    allowPositionals: false,
+  // Every flag is validated here, before a session is listed, so a run that
+  // cannot start fails while the user is still at the prompt.
+  const options = parseCliOptions(process.argv.slice(2), {
+    interactive: process.stdin.isTTY === true,
   });
 
-  if (values.help === true) {
+  if (options.help) {
     process.stdout.write(HELP);
     return;
   }
 
-  const providerId = values.provider ?? "codex";
-  if (!isProviderId(providerId)) {
-    throw new Error(`Unknown provider: ${providerId}\nKnown providers: ${PROVIDER_IDS.join(", ")}`);
-  }
-
-  // Resolved before any session work so a contradictory pair of flags fails
-  // immediately rather than after the user has picked a session.
-  const previewChoice = decidePromptPreview({
-    enable: values["prompt-preview"] === true,
-    disable: values["no-prompt-preview"] === true,
-    interactive: process.stdin.isTTY === true,
-  });
-
+  const { providerId, previewChoice, offline } = options;
   // Named `refreshRequested`, not `refreshPricing`: that identifier is the
   // imported function, and shadowing it here would be a compile error.
-  const offline = values.offline === true;
-  const refreshRequested = values["refresh-pricing"] === true;
-  if (offline && refreshRequested) {
-    throw new Error("Both --offline and --refresh-pricing were given. Pass only one.");
-  }
+  const refreshRequested = options.refreshPricing;
 
   const cachePath = resolvePricingCachePath();
   if (refreshRequested) {
