@@ -79,7 +79,8 @@ export function createClaudeCodeParser(): ClaudeCodeParser {
     if (seenUuids.has(uuid)) return [];
     seenUuids.add(uuid);
 
-    // Subagent traffic is deliberately out of scope; see docs/ROADMAP.md.
+    // Subagent traffic is deliberately out of scope: Claude Code writes it to a
+    // separate transcript, so nothing here accounts for it.
     if (record["isSidechain"] === true) return [];
     if (!hasUsableIdentifiers(record)) return [];
 

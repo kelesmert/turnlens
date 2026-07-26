@@ -18,7 +18,7 @@ export interface PromptPreviewFlags {
  * explicit yes resolves to off. Only `stdin` decides whether asking is possible:
  * a piped stdin is feeding the session selection, and a question would eat a
  * line meant for it. Checking `stdout` as well is what made the Python version
- * misbehave under a pipe (known-bugs.md P2-3).
+ * misbehave under a pipe.
  */
 export function decidePromptPreview(flags: PromptPreviewFlags): PromptPreviewChoice {
   if (flags.enable && flags.disable) {

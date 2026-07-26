@@ -2,15 +2,27 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Plan-mode scratch output. Plans that matter are committed under
-# docs/superpowers/plans/ with a meaningful name.
-.claude/plans/
-
-# Runtime output from the legacy Python watcher
+# Runtime output from the CLI. Locks and the pricing cache live under
+# ~/.turnscope/; the two dot-directories stay listed so leftovers from before
+# that move, and from the legacy Python watcher, are ignored.
+turnscope-usage/
+.turnscope-locks/
 codex-turn-usage/
 .codex-turn-watch-locks/
 
-# Runtime output from the TypeScript CLI. Locks now live in ~/.turnscope/locks/;
-# .turnscope-locks/ stays listed so leftovers from before that move are ignored.
-turnscope-usage/
-.turnscope-locks/
+# Development material. The published repository is the tool: source, tests and
+# the README. Everything below is how it got built, and stays on the machine it
+# was built on.
+#
+# docs/ is ignored as a directory rather than by listing what is in it, so a
+# document written tomorrow is private by default and nobody has to remember a
+# rule. .local/ is the same idea for files that are not documents and have no
+# other obvious home.
+docs/
+documentation/
+.local/
+
+# Instructions and configuration for the agent used to develop this. CLAUDE.md
+# is ignored where it sits because Claude Code reads it from the repository root.
+CLAUDE.md
+.claude/

@@ -80,7 +80,8 @@ export type ProviderEvent =
  * How a turn ended.
  *
  * `aborted` exists because an interrupted turn still consumed tokens. Folding it
- * into the next turn is the defect recorded as P1-1 in known-bugs.md.
+ * into the next turn bills work the user stopped to the question they asked
+ * afterwards, which is the defect this distinction exists to prevent.
  */
 export type TurnStatus = "completed" | "aborted" | "compacted";
 

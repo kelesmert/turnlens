@@ -77,7 +77,7 @@ export function turnRowKey(row: TurnRowIdentity): string {
  *
  * An existing file whose header matches is never rewritten; the Python
  * implementation streamed the whole file through a temporary copy on every
- * start, even when nothing changed (known-bugs.md P3-4). A mismatched header is
+ * start, even when nothing changed. A mismatched header is
  * an error rather than an automatic conversion, so an unrecognised schema cannot
  * be silently reshaped.
  */

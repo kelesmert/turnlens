@@ -38,8 +38,8 @@ interface CloseRequest {
  * tested against literal numbers taken from real sessions.
  *
  * `turnAbort` and `boundary` are turn boundaries, not ignorable noise. Treating
- * an abort as noise is what caused known-bugs.md P1-1, where an interrupted
- * turn's 121,334 tokens were billed to the next completed turn.
+ * an abort as noise once billed an interrupted turn's 121,334 tokens to the
+ * next completed turn, measured in a real session.
  *
  * A boundary that consumed no tokens produces no turn but still advances the
  * baseline, so an empty turn is dropped without shifting later arithmetic.

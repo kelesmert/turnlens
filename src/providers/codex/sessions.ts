@@ -69,7 +69,7 @@ export async function loadSessionNames(
  * The name says "all" deliberately. Codex exposes no reliable liveness marker,
  * so this includes sessions that can no longer produce turns; modification time
  * is the only honest ordering signal. The previous Python implementation claimed
- * to list only active sessions while doing exactly this (known-bugs.md P3-5).
+ * to list only active sessions while doing exactly this.
  */
 export async function listAllSessionsNewestFirst(
   paths: CodexPaths,

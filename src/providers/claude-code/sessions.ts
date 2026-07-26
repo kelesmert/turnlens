@@ -53,7 +53,7 @@ export function resolveClaudeCodePaths(env: NodeJS.ProcessEnv = process.env): Cl
  * The scan stops at depth one on purpose. A session directory beside the
  * transcript holds `subagents/` and `tool-results/`; recursing would list
  * subagent transcripts as if they were sessions, and subagent cost is
- * deliberately out of scope (docs/ROADMAP.md).
+ * deliberately out of scope.
  *
  * As with Codex, "all" is literal. Claude Code exposes no liveness marker, so
  * modification time is the only honest ordering signal.

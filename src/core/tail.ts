@@ -60,7 +60,7 @@ export async function* readCompleteLines(
  * A partially written record is held until its newline arrives, so a reader
  * never sees truncated JSON. If the file shrinks it is treated as rotated and
  * reading restarts from byte 0, which the previous Python implementation could
- * not detect (known-bugs.md P3-2). The file is opened read-only.
+ * not detect. The file is opened read-only.
  */
 export async function followLines(
   path: string,

@@ -11,7 +11,7 @@ export const CODEX_USAGE_MODEL: UsageModel = "cumulative";
  * Only `response_item` types are listed. The legacy `*_begin` event names the
  * previous implementation handled never appear in real sessions, and their
  * `*_end` counterparts arrive with no matching start, so both are omitted
- * rather than silently dropping data (known-bugs.md P3-1).
+ * rather than silently dropping data.
  */
 const TOOL_CALL_TYPE_ALIASES: Readonly<Record<string, string>> = {
   apply_patch_call: "apply_patch",

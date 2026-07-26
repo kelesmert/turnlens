@@ -15,7 +15,7 @@ export interface SessionLock {
  * Uses an atomic create-or-fail open, which behaves identically on Linux, macOS
  * and Windows. The Python implementation used `fcntl.flock`, which does not exist
  * on Windows, and never closed the handle or removed the file, so lock files
- * accumulated indefinitely (known-bugs.md P3-3).
+ * accumulated indefinitely.
  *
  * The lock name is derived from the session path rather than the path itself, so
  * a long or awkward path cannot produce an invalid filename.

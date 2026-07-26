@@ -127,12 +127,12 @@ async function main(): Promise<void> {
   const lock = await acquireSessionLock(resolveSessionLockDir(), selected.path);
 
   // No terminal is spawned: the CLI runs in the terminal that invoked it, which
-  // is why Ctrl+C simply stops monitoring (known-bugs.md P2-3).
+  // is why Ctrl+C simply stops monitoring.
   //
   // Every signal that means "stop" aborts rather than killing the process, so the
   // summary still prints and the lock is released. Left unhandled, SIGTERM and
   // SIGHUP skip the cleanup and strand the lock file, which is what made lock
-  // files accumulate in the Python implementation (known-bugs.md P3-3).
+  // files accumulate in the Python implementation.
   const controller = new AbortController();
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     process.once(signal, () => controller.abort());

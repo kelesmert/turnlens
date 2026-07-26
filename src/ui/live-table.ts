@@ -18,7 +18,7 @@ interface Column {
  *
  * The previous implementation printed fixed `5 hour` and `Week` headings while
  * recording `window_minutes` and never reading it, so the labels were a guess
- * presented as fact (known-bugs.md P3-5). An unreported window reads as `-`.
+ * presented as fact. An unreported window reads as `-`.
  */
 export function formatWindowLabel(windowMinutes: number | undefined): string {
   if (windowMinutes === undefined || windowMinutes <= 0) return ABSENT;
