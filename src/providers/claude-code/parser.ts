@@ -5,6 +5,15 @@ import type { ProviderEvent, TokenUsage, UsageModel } from "../../core/types.js"
 /** Claude Code reports each message's own usage, so a turn is a sum. */
 export const CLAUDE_CODE_USAGE_MODEL: UsageModel = "per-event";
 
+/**
+ * The text Claude Code writes as a user message when a turn is interrupted.
+ *
+ * There is no dedicated record type for an interruption, so this string is the
+ * signal. It is matched as a substring because the marker can be followed by
+ * other content in the same block.
+ */
+export const INTERRUPT_MARKER = "[Request interrupted by user]";
+
 export type ClaudeCodeParser = (record: unknown) => readonly ProviderEvent[];
 
 /**
@@ -44,6 +53,7 @@ const USAGE_FIELD_NAMES = [
  */
 export function createClaudeCodeParser(): ClaudeCodeParser {
   const seenUuids = new Set<string>();
+  let openPromptId: string | undefined;
 
   return function parseClaudeCodeRecord(record: unknown): readonly ProviderEvent[] {
     if (!isRecord(record)) return [];
@@ -58,9 +68,46 @@ export function createClaudeCodeParser(): ClaudeCodeParser {
     if (record["isSidechain"] === true) return [];
     if (!hasUsableIdentifiers(record)) return [];
 
-    if (collapseWhitespace(record["type"]) !== "assistant") return [];
-    return parseAssistant(record, collapseWhitespace(record["timestamp"]));
+    const at = collapseWhitespace(record["timestamp"]);
+
+    switch (collapseWhitespace(record["type"])) {
+      case "user":
+        return parseUser(record, at);
+      case "assistant":
+        return parseAssistant(record, at);
+      case "system":
+        return parseSystem(record, at);
+      default:
+        return [];
+    }
   };
+
+  /** Declared inside the factory because it reads and writes `openPromptId`. */
+  function parseUser(
+    record: Readonly<Record<string, unknown>>,
+    at: string,
+  ): readonly ProviderEvent[] {
+    const message = record["message"];
+    const content = isRecord(message) ? message["content"] : undefined;
+    const text = readUserText(content);
+
+    if (text.includes(INTERRUPT_MARKER)) {
+      return [{ kind: "turnAbort", at, reason: "interrupted" }];
+    }
+
+    // The summary a compaction writes is not a prompt; the boundary record that
+    // precedes it already closed the turn.
+    if (record["isCompactSummary"] === true) return [];
+    if (hasToolResult(content)) return [];
+
+    const promptId = collapseWhitespace(record["promptId"]);
+    if (promptId === "" || promptId === openPromptId) return [];
+    openPromptId = promptId;
+
+    const events: ProviderEvent[] = [{ kind: "turnStart", at, turnId: promptId }];
+    if (text !== "") events.push({ kind: "meta", at, promptText: text });
+    return events;
+  }
 }
 
 function parseAssistant(
@@ -70,11 +117,58 @@ function parseAssistant(
   const message = record["message"];
   if (!isRecord(message)) return [];
 
-  const usage = readUsage(message["usage"]);
-  if (usage === undefined) return [];
+  const events: ProviderEvent[] = [];
 
-  const dedupKey = readDedupKey(record, message);
-  return [{ kind: "usage", at, usage, ...(dedupKey === undefined ? {} : { dedupKey }) }];
+  const usage = readUsage(message["usage"]);
+  if (usage !== undefined) {
+    const dedupKey = readDedupKey(record, message);
+    events.push({ kind: "usage", at, usage, ...(dedupKey === undefined ? {} : { dedupKey }) });
+  }
+
+  // Emitted after the usage of the same response so the closing turn includes it.
+  if (collapseWhitespace(message["stop_reason"]) === "end_turn") {
+    events.push({ kind: "turnEnd", at });
+  }
+
+  return events;
+}
+
+/**
+ * Closes a turn on compaction.
+ *
+ * `subtype` is the discriminator rather than the presence of `compactMetadata`,
+ * because the metadata's shape is richer than anything TurnScope reads and a
+ * future field there should not change whether a turn closes.
+ */
+function parseSystem(
+  record: Readonly<Record<string, unknown>>,
+  at: string,
+): readonly ProviderEvent[] {
+  if (collapseWhitespace(record["subtype"]) !== "compact_boundary") return [];
+  return [{ kind: "boundary", at, reason: "compacted" }];
+}
+
+/** `message.content` is a plain string as often as it is an array of blocks. */
+function readUserText(content: unknown): string {
+  if (typeof content === "string") return collapseWhitespace(content);
+  if (!Array.isArray(content)) return "";
+
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!isRecord(block)) continue;
+    if (collapseWhitespace(block["type"]) !== "text") continue;
+    const text = collapseWhitespace(block["text"]);
+    if (text !== "") parts.push(text);
+  }
+  return parts.join(" ");
+}
+
+/** A tool result carries the prompt id of the turn it belongs to, but is not a prompt. */
+function hasToolResult(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  return content.some(
+    (block) => isRecord(block) && collapseWhitespace(block["type"]) === "tool_result",
+  );
 }
 
 /**

@@ -194,3 +194,134 @@ describe("createClaudeCodeParser removes both kinds of duplication", () => {
     expect(usageEvents(second(assistantRecord("a1")))).toHaveLength(1);
   });
 });
+
+function userRecord(uuid: string, promptId: string, content: unknown): unknown {
+  return {
+    uuid,
+    type: "user",
+    timestamp: "2026-07-25T11:04:05.147Z",
+    isSidechain: false,
+    promptId,
+    sessionId: "79c14101-4f5d-4793-ab69-8649e76d2062",
+    message: { role: "user", content },
+  };
+}
+
+describe("createClaudeCodeParser opens turns on new prompts", () => {
+  it("opens a turn and carries the prompt text when content is a plain string", () => {
+    const parse = createClaudeCodeParser();
+    expect(parse(userRecord("u1", "p1", "do we have claude code terminal?"))).toEqual([
+      { kind: "turnStart", at: "2026-07-25T11:04:05.147Z", turnId: "p1" },
+      {
+        kind: "meta",
+        at: "2026-07-25T11:04:05.147Z",
+        promptText: "do we have claude code terminal?",
+      },
+    ]);
+  });
+
+  it("reads prompt text out of an array of content blocks", () => {
+    const parse = createClaudeCodeParser();
+    const events = parse(
+      userRecord("u1", "p1", [
+        { type: "image", source: {} },
+        { type: "text", text: "look at this" },
+      ]),
+    ) as readonly { kind: string; promptText?: string }[];
+    expect(events[1]).toEqual({
+      kind: "meta",
+      at: "2026-07-25T11:04:05.147Z",
+      promptText: "look at this",
+    });
+  });
+
+  it("opens no second turn while the prompt id is unchanged", () => {
+    const parse = createClaudeCodeParser();
+    expect(parse(userRecord("u1", "p1", "first"))).toHaveLength(2);
+    expect(parse(userRecord("u2", "p1", "still the same prompt"))).toEqual([]);
+  });
+
+  it("opens a new turn when the prompt id changes", () => {
+    const parse = createClaudeCodeParser();
+    parse(userRecord("u1", "p1", "first"));
+    const events = parse(userRecord("u2", "p2", "second")) as readonly { kind: string }[];
+    expect(events[0]).toEqual({ kind: "turnStart", at: "2026-07-25T11:04:05.147Z", turnId: "p2" });
+  });
+
+  it("ignores tool results, which share the prompt id but are not prompts", () => {
+    const parse = createClaudeCodeParser();
+    expect(
+      parse(userRecord("u1", "p1", [{ type: "tool_result", tool_use_id: "toolu_01Jc7Dpcksn" }])),
+    ).toEqual([]);
+  });
+
+  it("ignores the summary record a compaction writes", () => {
+    const parse = createClaudeCodeParser();
+    const record = userRecord("u1", "p1", "summary text");
+    (record as { isCompactSummary: boolean }).isCompactSummary = true;
+    expect(parse(record)).toEqual([]);
+  });
+
+  it("emits no prompt text when the prompt is empty", () => {
+    const parse = createClaudeCodeParser();
+    expect(parse(userRecord("u1", "p1", "   "))).toEqual([
+      { kind: "turnStart", at: "2026-07-25T11:04:05.147Z", turnId: "p1" },
+    ]);
+  });
+});
+
+describe("createClaudeCodeParser closes turns", () => {
+  it("closes a turn on end_turn, after the usage of that same response", () => {
+    const parse = createClaudeCodeParser();
+    const events = parse(assistantRecord("a1", { stop_reason: "end_turn" })) as readonly {
+      kind: string;
+    }[];
+    expect(events.map((event) => event.kind)).toEqual(["usage", "turnEnd"]);
+  });
+
+  it("does not close a turn on any other stop reason", () => {
+    const parse = createClaudeCodeParser();
+    const kinds = (parse(assistantRecord("a1")) as readonly { kind: string }[]).map((e) => e.kind);
+    expect(kinds).not.toContain("turnEnd");
+
+    const streaming = parse(assistantRecord("a2", { stop_reason: null })) as readonly {
+      kind: string;
+    }[];
+    expect(streaming.map((event) => event.kind)).not.toContain("turnEnd");
+  });
+
+  it("aborts a turn on the interruption marker", () => {
+    const parse = createClaudeCodeParser();
+    expect(
+      parse(userRecord("u1", "p1", [{ type: "text", text: "[Request interrupted by user]" }])),
+    ).toEqual([{ kind: "turnAbort", at: "2026-07-25T11:04:05.147Z", reason: "interrupted" }]);
+  });
+
+  it("closes a turn on a compaction boundary", () => {
+    const parse = createClaudeCodeParser();
+    expect(
+      parse({
+        uuid: "s1",
+        type: "system",
+        subtype: "compact_boundary",
+        timestamp: "2026-07-25T15:28:32.579Z",
+        isSidechain: false,
+        content: "Conversation compact",
+        compactMetadata: { trigger: "manual", preTokens: 415115 },
+      }),
+    ).toEqual([{ kind: "boundary", at: "2026-07-25T15:28:32.579Z", reason: "compacted" }]);
+  });
+
+  it("ignores system records that are not compaction boundaries", () => {
+    const parse = createClaudeCodeParser();
+    expect(
+      parse({
+        uuid: "s1",
+        type: "system",
+        subtype: "hook_result",
+        timestamp: "2026-07-25T15:28:32.579Z",
+        isSidechain: false,
+      }),
+    ).toEqual([]);
+  });
+});
