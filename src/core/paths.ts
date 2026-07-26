@@ -26,3 +26,38 @@ export function resolveTurnscopeHome(env: NodeJS.ProcessEnv = process.env): stri
 export function resolveSessionLockDir(env: NodeJS.ProcessEnv = process.env): string {
   return join(resolveTurnscopeHome(env), "locks");
 }
+
+/** The directory name for recorded turns, relative to where the command ran. */
+export const CSV_DIR_NAME = "turnscope-usage";
+
+/**
+ * Where one session's recorded turns are written.
+ *
+ * Grouped by provider. Session ids never collide across agents -- Codex writes
+ * `rollout-<timestamp>-<uuid>` and Claude Code writes a bare uuid -- and every
+ * row already carries a `provider` column, so this buys no correctness. It buys
+ * a directory a person can read: after months of use, "which of these is Codex"
+ * should not require opening the files.
+ *
+ * Both segments are sanitised. The provider id is internal today, but a path
+ * built from an identifier is a path that can escape its directory, and a
+ * one-line guard is cheaper than trusting that it never will.
+ */
+export function resolveSessionCsvPath(cwd: string, provider: string, sessionId: string): string {
+  return join(cwd, CSV_DIR_NAME, toPathSegment(provider), `${toPathSegment(sessionId)}.csv`);
+}
+
+/**
+ * Reduces a value to one safe path segment.
+ *
+ * Windows rejects `\ / : * ? " < > |` outright, so the allowlist is narrower
+ * than any one platform requires and identical on all of them.
+ *
+ * Dots survive, because real session ids contain them. A segment made only of
+ * dots does not: `.` and `..` are directory references rather than names, and
+ * `..` alone would resolve one level above the output directory.
+ */
+function toPathSegment(value: string): string {
+  const safe = value.replaceAll(/[^A-Za-z0-9._-]/gu, "_");
+  return /^\.+$/u.test(safe) ? safe.replaceAll(".", "_") : safe;
+}

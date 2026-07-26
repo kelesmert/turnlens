@@ -1,10 +1,11 @@
 #!/usr/bin/env node
+import { readdir } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { acquireSessionLock } from "./core/lock.js";
 import { toFiniteInt } from "./core/numbers.js";
-import { resolveSessionLockDir } from "./core/paths.js";
+import { CSV_DIR_NAME, resolveSessionCsvPath, resolveSessionLockDir } from "./core/paths.js";
 import { truncate } from "./core/text.js";
 import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
@@ -14,8 +15,6 @@ import { summariseCsv } from "./ui/summary.js";
 import { runWatch } from "./watch.js";
 import type { SessionRef } from "./core/types.js";
 
-/** Relative to the working directory: the CSV is output the user owns. */
-const LOG_DIR = "turnscope-usage";
 const SESSION_LIST_LIMIT = 25;
 const RULE_WIDTH = 100;
 
@@ -118,7 +117,8 @@ async function main(): Promise<void> {
           "\nStore a 20-character preview of each prompt in the CSV?\nThis writes part of your prompt to disk.",
         )
       : previewChoice === "enabled";
-  const csvPath = join(process.cwd(), LOG_DIR, `${toFileStem(selected.sessionId)}.csv`);
+  const csvPath = resolveSessionCsvPath(process.cwd(), selected.provider, selected.sessionId);
+  write(await noticeForLegacyCsvLocation(process.cwd()));
 
   // Held for the whole run so one session is never watched twice. The lock lives
   // under the user's home, not the working directory: it covers a session file,
@@ -188,8 +188,27 @@ async function selectSession(sessions: readonly SessionRef[]): Promise<SessionRe
 }
 
 /** Turns a session id into one safe filename component on every platform. */
-function toFileStem(sessionId: string): string {
-  return sessionId.replaceAll(/[^A-Za-z0-9._-]/gu, "_");
+/**
+ * Warns when recorded turns exist directly under the output directory.
+ *
+ * Recordings used to land there; they are now grouped by provider. TurnScope
+ * does not move them: they are the user's own data, and a tool that silently
+ * relocates files is a tool nobody can reason about. Saying where both live is
+ * enough.
+ */
+async function noticeForLegacyCsvLocation(cwd: string): Promise<readonly string[]> {
+  let entries: readonly string[];
+  try {
+    entries = await readdir(join(cwd, CSV_DIR_NAME));
+  } catch {
+    return [];
+  }
+
+  if (!entries.some((entry) => entry.endsWith(".csv"))) return [];
+  return [
+    `Note: earlier recordings are directly under ${CSV_DIR_NAME}/. New ones are`,
+    "grouped by provider. Nothing was moved; move them yourself if you want them together.",
+  ];
 }
 
 function write(lines: readonly string[]): void {
