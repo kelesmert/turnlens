@@ -31,6 +31,17 @@ interface Recorder {
  * Returns how many turns were newly recorded. Turns already present in the CSV
  * are skipped by turn id, so importing the same history twice is a no-op rather
  * than a duplicate.
+ *
+ * **No CLI flag reaches this, on purpose.** Backfilled turns would be priced at
+ * today's rates, and a rate frozen at the moment a turn closed is the only thing
+ * a recorded row has that a row reconstructed from the transcript does not. Rows
+ * added here would therefore carry nothing the reporting command cannot rebuild.
+ *
+ * It stays because it is the batch path through the pipeline -- one file in,
+ * turns out -- which is what reporting needs, and because the fixture tests that
+ * lock the arithmetic drive it rather than `runWatch`. Reporting will reuse the
+ * traversal without the CSV write; its own difference is that it chooses the
+ * files instead of being handed one.
  */
 export async function importHistory(
   options: WatchOptions & { readonly stopAtByte: number },
