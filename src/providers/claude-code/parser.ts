@@ -110,6 +110,13 @@ export function createClaudeCodeParser(): ClaudeCodeParser {
   }
 }
 
+/**
+ * Converts one assistant record into events.
+ *
+ * Order matters and is asserted by a test. `meta` first so the model is known
+ * before anything is priced, tool calls next, then usage, then the close, so a
+ * turn ending on this record includes this record's own tokens.
+ */
 function parseAssistant(
   record: Readonly<Record<string, unknown>>,
   at: string,
@@ -118,6 +125,21 @@ function parseAssistant(
   if (!isRecord(message)) return [];
 
   const events: ProviderEvent[] = [];
+
+  const model = collapseWhitespace(message["model"]);
+  // Codex buries this under turn_context.collaboration_mode.settings; Claude
+  // Code puts it on the record itself.
+  const reasoningEffort = collapseWhitespace(record["effort"]);
+  if (model !== "" || reasoningEffort !== "") {
+    events.push({
+      kind: "meta",
+      at,
+      ...(model === "" ? {} : { model }),
+      ...(reasoningEffort === "" ? {} : { reasoningEffort }),
+    });
+  }
+
+  events.push(...readToolCalls(message["content"], at));
 
   const usage = readUsage(message["usage"]);
   if (usage !== undefined) {
@@ -130,6 +152,31 @@ function parseAssistant(
     events.push({ kind: "turnEnd", at });
   }
 
+  return events;
+}
+
+/**
+ * One event per `tool_use` block.
+ *
+ * No deduplication is needed here: a content block appears in exactly one
+ * record, and the replayed copies of that record were already dropped by uuid.
+ * The block id is passed as `callId` so the assembler's own guard also holds.
+ */
+function readToolCalls(content: unknown, at: string): readonly ProviderEvent[] {
+  if (!Array.isArray(content)) return [];
+
+  const events: ProviderEvent[] = [];
+  for (const block of content) {
+    if (!isRecord(block)) continue;
+    if (collapseWhitespace(block["type"]) !== "tool_use") continue;
+
+    // An unnamed tool call is not counted under an invented name.
+    const name = collapseWhitespace(block["name"]);
+    if (name === "") continue;
+
+    const callId = collapseWhitespace(block["id"]);
+    events.push({ kind: "toolCall", at, name, ...(callId === "" ? {} : { callId }) });
+  }
   return events;
 }
 

@@ -276,7 +276,7 @@ describe("createClaudeCodeParser closes turns", () => {
     const events = parse(assistantRecord("a1", { stop_reason: "end_turn" })) as readonly {
       kind: string;
     }[];
-    expect(events.map((event) => event.kind)).toEqual(["usage", "turnEnd"]);
+    expect(events.map((event) => event.kind)).toEqual(["meta", "usage", "turnEnd"]);
   });
 
   it("does not close a turn on any other stop reason", () => {
@@ -323,5 +323,85 @@ describe("createClaudeCodeParser closes turns", () => {
         isSidechain: false,
       }),
     ).toEqual([]);
+  });
+});
+
+describe("createClaudeCodeParser reads model, effort and tool calls", () => {
+  it("reports the model and the reasoning effort", () => {
+    const parse = createClaudeCodeParser();
+    const record = assistantRecord("a1");
+    (record as { effort: string }).effort = "medium";
+    const events = parse(record) as readonly { kind: string }[];
+    expect(events[0]).toEqual({
+      kind: "meta",
+      at: "2026-07-25T11:04:09.039Z",
+      model: "claude-opus-5",
+      reasoningEffort: "medium",
+    });
+  });
+
+  it("omits the effort when the record carries none", () => {
+    const parse = createClaudeCodeParser();
+    const events = parse(assistantRecord("a1")) as readonly { kind: string }[];
+    expect(events[0]).toEqual({
+      kind: "meta",
+      at: "2026-07-25T11:04:09.039Z",
+      model: "claude-opus-5",
+    });
+  });
+
+  it("counts one tool call per tool_use block, keyed by the block id", () => {
+    const parse = createClaudeCodeParser();
+    const events = parse(
+      assistantRecord("a1", {
+        content: [
+          { type: "text", text: "running two things" },
+          { type: "tool_use", name: "Bash", id: "toolu_01W6cfcRebxynhV2jDFy4ucU" },
+          { type: "tool_use", name: "Read", id: "toolu_014iFtndbnh25Srs17tQ27b5" },
+        ],
+      }),
+    ) as readonly { kind: string; name?: string; callId?: string }[];
+
+    expect(events.filter((event) => event.kind === "toolCall")).toEqual([
+      {
+        kind: "toolCall",
+        at: "2026-07-25T11:04:09.039Z",
+        name: "Bash",
+        callId: "toolu_01W6cfcRebxynhV2jDFy4ucU",
+      },
+      {
+        kind: "toolCall",
+        at: "2026-07-25T11:04:09.039Z",
+        name: "Read",
+        callId: "toolu_014iFtndbnh25Srs17tQ27b5",
+      },
+    ]);
+  });
+
+  it("ignores content blocks that are not tool calls", () => {
+    const parse = createClaudeCodeParser();
+    const events = parse(
+      assistantRecord("a1", { content: [{ type: "thinking" }, { type: "text", text: "hello" }] }),
+    ) as readonly { kind: string }[];
+    expect(events.map((event) => event.kind)).not.toContain("toolCall");
+  });
+
+  it("ignores a tool_use block with no name rather than inventing one", () => {
+    const parse = createClaudeCodeParser();
+    const events = parse(
+      assistantRecord("a1", { content: [{ type: "tool_use", id: "toolu_01" }] }),
+    ) as readonly { kind: string }[];
+    expect(events.map((event) => event.kind)).not.toContain("toolCall");
+  });
+
+  it("emits events in the order the assembler needs: meta, tools, usage, close", () => {
+    const parse = createClaudeCodeParser();
+    const record = assistantRecord("a1", {
+      stop_reason: "end_turn",
+      content: [{ type: "tool_use", name: "Bash", id: "toolu_01" }],
+    });
+    (record as { effort: string }).effort = "high";
+    const kinds = (parse(record) as readonly { kind: string }[]).map((event) => event.kind);
+    expect(kinds).toEqual(["meta", "toolCall", "usage", "turnEnd"]);
   });
 });
