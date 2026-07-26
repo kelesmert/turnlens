@@ -405,3 +405,58 @@ describe("createClaudeCodeParser reads model, effort and tool calls", () => {
     expect(kinds).toEqual(["meta", "toolCall", "usage", "turnEnd"]);
   });
 });
+
+describe("createClaudeCodeParser aborts a turn interrupted during a tool call", () => {
+  // Claude Code writes two different markers, and the difference is only visible
+  // after the word "user". Stopping the agent while it writes gives
+  // "[Request interrupted by user]"; stopping it mid tool call gives
+  // "[Request interrupted by user for tool use]". Matching the first as a whole
+  // bracketed string misses the second, because the closing bracket moves.
+  it("aborts on the marker written when a tool call is interrupted", () => {
+    const parse = createClaudeCodeParser();
+    expect(
+      parse(
+        userRecord("u1", "p1", [
+          { type: "text", text: "[Request interrupted by user for tool use]" },
+        ]),
+      ),
+    ).toEqual([{ kind: "turnAbort", at: "2026-07-25T11:04:05.147Z", reason: "interrupted" }]);
+  });
+
+  it("still aborts on the marker written when the reply is interrupted", () => {
+    const parse = createClaudeCodeParser();
+    expect(
+      parse(userRecord("u1", "p1", [{ type: "text", text: "[Request interrupted by user]" }])),
+    ).toEqual([{ kind: "turnAbort", at: "2026-07-25T11:04:05.147Z", reason: "interrupted" }]);
+  });
+
+  it("ignores the rejection tool_result that precedes the marker", () => {
+    const parse = createClaudeCodeParser();
+    const record = userRecord("u1", "p1", [
+      {
+        type: "tool_result",
+        content:
+          "The user doesn't want to proceed with this tool use. The tool use was rejected",
+        is_error: true,
+        tool_use_id: "toolu_01XFrMHBzpxM8r1c5CtFAx1L",
+      },
+    ]);
+    (record as { toolDenialKind: string }).toolDenialKind = "user-rejected";
+    expect(parse(record)).toEqual([]);
+  });
+
+  it("does not treat a denial that leaves the turn running as an interruption", () => {
+    // Measured locally: toolDenialKind is "user-rejected" only when the user
+    // stopped the agent, but also "permission-rule" and "automode-unavailable"
+    // when a tool was refused and the agent carried on in the same turn. The
+    // field is therefore not an abort signal; the marker text is.
+    const parse = createClaudeCodeParser();
+    for (const [index, kind] of ["permission-rule", "automode-unavailable"].entries()) {
+      const record = userRecord(`u${index}`, "p1", [
+        { type: "tool_result", content: "denied", is_error: true, tool_use_id: "toolu_01" },
+      ]);
+      (record as { toolDenialKind: string }).toolDenialKind = kind;
+      expect(parse(record)).toEqual([]);
+    }
+  });
+});

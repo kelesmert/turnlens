@@ -9,10 +9,25 @@ export const CLAUDE_CODE_USAGE_MODEL: UsageModel = "per-event";
  * The text Claude Code writes as a user message when a turn is interrupted.
  *
  * There is no dedicated record type for an interruption, so this string is the
- * signal. It is matched as a substring because the marker can be followed by
- * other content in the same block.
+ * signal. Deliberately **unterminated**: Claude Code writes two markers and the
+ * difference falls after the word "user".
+ *
+ *   [Request interrupted by user]                 stopped while replying
+ *   [Request interrupted by user for tool use]    stopped mid tool call
+ *
+ * Matching the first as a whole bracketed string silently misses the second,
+ * which is how a live session recorded an interrupted WebSearch turn's tokens
+ * and tool call against the next prompt instead of its own.
+ *
+ * The structural fields on the record that precedes the marker
+ * (`toolDenialKind`, `toolUseResult`, `is_error`) are deliberately not used as
+ * the signal. `toolDenialKind` was measured locally with three values --
+ * `user-rejected`, `permission-rule` and `automode-unavailable` -- and only the
+ * first means the user stopped the agent. The other two are tools refused while
+ * the turn kept running, so treating the field as an abort would split turns
+ * that never ended.
  */
-export const INTERRUPT_MARKER = "[Request interrupted by user]";
+export const INTERRUPT_MARKER = "[Request interrupted by user";
 
 export type ClaudeCodeParser = (record: unknown) => readonly ProviderEvent[];
 

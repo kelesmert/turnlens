@@ -143,3 +143,18 @@ describe("the Claude Code pipeline over the edge cases", () => {
     expect(turns.map((turn) => turn.reasoningEffort)).toEqual(["high", "high", "high"]);
   });
 });
+
+describe("a turn interrupted in the middle of a tool call", () => {
+  // Reproduces a defect found by live verification. Stopping the agent while a
+  // WebSearch was running left its turn open, so the interrupted turn's 41,120
+  // tokens and its WebSearch call were recorded against the next prompt.
+  it("closes on the tool-use interruption marker instead of leaking into the next prompt", () => {
+    const turns = assemble("claude-code-tool-interrupt.jsonl");
+    expect(
+      turns.map((turn) => [turn.status, turn.turnId, turn.usage.total, turn.toolCalls]),
+    ).toEqual([
+      ["aborted", "2b0f0fa8", 41120, { WebSearch: 1 }],
+      ["completed", "1291a013", 82841, {}],
+    ]);
+  });
+});
