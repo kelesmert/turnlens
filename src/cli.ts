@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises";
 import { acquireSessionLock } from "./core/lock.js";
-import { toFiniteInt } from "./core/numbers.js";
 import { resolveSessionCsvPath, resolveSessionLockDir } from "./core/paths.js";
 import { truncate } from "./core/text.js";
-import { parseCliOptions } from "./options.js";
+import { chooseSession, parseCliOptions } from "./options.js";
 import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
 import { PROVIDER_IDS, getAdapter } from "./providers/registry.js";
@@ -155,9 +154,7 @@ async function selectSession(sessions: readonly SessionRef[]): Promise<SessionRe
     readline.close();
   }
 
-  const selected = sessions[toFiniteInt(answer.trim(), 0) - 1];
-  if (selected === undefined) throw new Error(`Enter a number from 1 to ${sessions.length}.`);
-  return selected;
+  return chooseSession(sessions, answer);
 }
 
 function write(lines: readonly string[]): void {

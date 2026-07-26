@@ -1,6 +1,8 @@
 import { parseArgs } from "node:util";
+import { toFiniteInt } from "./core/numbers.js";
 import { PROVIDER_IDS, isProviderId } from "./providers/registry.js";
 import { decidePromptPreview } from "./ui/prompts.js";
+import type { SessionRef } from "./core/types.js";
 import type { ProviderId } from "./providers/registry.js";
 import type { PromptPreviewChoice } from "./ui/prompts.js";
 
@@ -80,4 +82,23 @@ export function parseCliOptions(argv: readonly string[], env: CliEnvironment): C
   }
 
   return { providerId, previewChoice, offline, refreshPricing, help: false };
+}
+
+/**
+ * Resolves a typed answer to the session it names.
+ *
+ * Separated from the prompt because reading a line needs a terminal and
+ * converting one does not, and the conversion is the half that can be wrong.
+ *
+ * `toFiniteInt` yields its fallback for anything it cannot parse, so an empty
+ * line, a word and a negative number all arrive as 0 -- indistinguishable from a
+ * deliberately typed 0 -- and 0 - 1 indexes nothing. Every one of them is
+ * refused identically rather than starting a watch on something the user did not
+ * choose. The message names the range instead of repeating the list, which is
+ * still on screen directly above it.
+ */
+export function chooseSession(sessions: readonly SessionRef[], answer: string): SessionRef {
+  const selected = sessions[toFiniteInt(answer.trim(), 0) - 1];
+  if (selected === undefined) throw new Error(`Enter a number from 1 to ${sessions.length}.`);
+  return selected;
 }

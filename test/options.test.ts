@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseCliOptions } from "../src/options.js";
+import { chooseSession, parseCliOptions } from "../src/options.js";
+import type { SessionRef } from "../src/core/types.js";
 
 /** A terminal exists, so the CLI is allowed to ask a question. */
 const TTY = { interactive: true } as const;
@@ -64,5 +65,52 @@ describe("parseCliOptions", () => {
   // absorb silently and then monitor something the user did not ask for.
   it("refuses a positional argument rather than ignoring it", () => {
     expect(() => parseCliOptions(["some-session-id"], TTY)).toThrow();
+  });
+});
+
+function session(sessionId: string): SessionRef {
+  return {
+    provider: "codex",
+    path: `/tmp/${sessionId}.jsonl`,
+    sessionId,
+    sessionName: sessionId,
+    lastActivityMs: 0,
+  };
+}
+
+describe("chooseSession", () => {
+  const sessions = [session("first"), session("second"), session("third")];
+
+  it("selects by the number shown in the list, which starts at one", () => {
+    expect(chooseSession(sessions, "1").sessionId).toBe("first");
+    expect(chooseSession(sessions, "3").sessionId).toBe("third");
+  });
+
+  it("ignores surrounding whitespace, because a terminal answer carries it", () => {
+    expect(chooseSession(sessions, "  2  ").sessionId).toBe("second");
+  });
+
+  /**
+   * One behaviour with four inputs, and the reason this function is worth
+   * separating. `toFiniteInt` yields its fallback for anything unparseable, so
+   * an empty line, a word and a negative number all become 0 -- the same value
+   * a user can type deliberately -- and 0 - 1 indexes nothing. All four have to
+   * be refused the same visible way rather than reaching the watcher.
+   */
+  it("rejects zero, which is one below the first entry", () => {
+    expect(() => chooseSession(sessions, "0")).toThrow("Enter a number from 1 to 3.");
+  });
+
+  it("rejects a number past the end of the list", () => {
+    expect(() => chooseSession(sessions, "4")).toThrow("Enter a number from 1 to 3.");
+  });
+
+  it("rejects an answer that is not a number at all", () => {
+    expect(() => chooseSession(sessions, "second")).toThrow("Enter a number from 1 to 3.");
+    expect(() => chooseSession(sessions, "")).toThrow("Enter a number from 1 to 3.");
+  });
+
+  it("rejects a negative number", () => {
+    expect(() => chooseSession(sessions, "-1")).toThrow("Enter a number from 1 to 3.");
   });
 });
