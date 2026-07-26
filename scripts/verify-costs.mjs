@@ -94,8 +94,12 @@ for (const fields of rows) {
     continue;
   }
 
-  // Six decimals is what the CSV stores, so compare at that resolution.
-  const ok = Math.abs(Number(recorded) - expected) < 5e-7;
+  // The CSV stores the cost rounded to six decimals, so the recorded value is
+  // correct exactly when it is this figure rounded the same way. Comparing with
+  // a `< 5e-7` tolerance instead rejects the boundary case: a real turn costing
+  // 0.2653995 is stored as 0.265400, which is off by exactly 5e-7 and was
+  // reported as a mismatch while printing two identical-looking numbers.
+  const ok = expected.toFixed(6) === Number(recorded).toFixed(6);
   if (ok) matched += 1;
   else mismatched += 1;
   console.log(
