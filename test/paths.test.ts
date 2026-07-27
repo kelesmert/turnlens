@@ -1,7 +1,8 @@
 import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { resolveHome } from "../src/core/home.js";
 import {
   resolveSessionCsvPath,
   resolveSessionLockDir,
@@ -22,6 +23,24 @@ describe("resolveTurnlensHome", () => {
   // Tests and unusual setups must never touch the real home directory.
   it("honours TURNLENS_HOME over the home directory", () => {
     expect(resolveTurnlensHome({ TURNLENS_HOME: "/tmp/ts", HOME: "/home/someone" })).toBe("/tmp/ts");
+  });
+
+  /**
+   * A relative state directory is the lock defect wearing a different hat.
+   *
+   * An empty `HOME` used to survive `??` and produce `.turnlens`, so locks and
+   * the pricing cache landed beside whatever directory the command ran in --
+   * exactly what moving them out of `process.cwd()` was meant to stop.
+   */
+  it("stays absolute when HOME is set to nothing", () => {
+    const home = resolveTurnlensHome({ HOME: "" });
+
+    expect(isAbsolute(home)).toBe(true);
+    expect(home).toBe(join(homedir(), ".turnlens"));
+  });
+
+  it("resolves the same home the providers do", () => {
+    expect(resolveTurnlensHome({ HOME: "" })).toBe(join(resolveHome({ HOME: "" }), ".turnlens"));
   });
 });
 

@@ -1,5 +1,5 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolveHome } from "./home.js";
 
 /**
  * Where TurnLens keeps its own state.
@@ -10,9 +10,12 @@ import { join } from "node:path";
  * per user and per machine, not per directory.
  *
  * `TURNLENS_HOME` wins so tests and unusual setups never touch the real home.
+ *
+ * The home itself comes from `resolveHome` rather than from `env` directly, so
+ * this and the two providers cannot disagree about where the user lives.
  */
 export function resolveTurnlensHome(env: NodeJS.ProcessEnv = process.env): string {
-  return env["TURNLENS_HOME"] ?? join(env["HOME"] ?? homedir(), ".turnlens");
+  return env["TURNLENS_HOME"] ?? join(resolveHome(env), ".turnlens");
 }
 
 /**
