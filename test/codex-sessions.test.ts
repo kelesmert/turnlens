@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createCodexAdapter,
@@ -27,6 +27,34 @@ describe("resolveCodexPaths", () => {
 
     expect(paths.sessionsRoot.endsWith(join(".codex", "sessions"))).toBe(true);
     expect(paths.sessionIndexFile.endsWith(join(".codex", "session_index.jsonl"))).toBe(true);
+  });
+
+  it("expands a tilde in CODEX_HOME, which a shell would have expanded", () => {
+    const paths = resolveCodexPaths({ HOME: "/home/someone", CODEX_HOME: "~/codex" });
+
+    expect(paths.sessionsRoot).toBe(join("/home/someone", "codex", "sessions"));
+  });
+
+  /**
+   * ccusage splits `CODEX_HOME` on commas so it can aggregate across several
+   * homes in one report. Codex documents a single directory and no comma form,
+   * and TurnLens watches one session, so splitting here would ship behaviour no
+   * observed agent has. A comma is an ordinary character in a directory name.
+   */
+  it("treats a comma as part of the path rather than as a separator", () => {
+    const paths = resolveCodexPaths({ CODEX_HOME: "/a,/b" });
+
+    expect(paths.sessionsRoot).toBe(join("/a,/b", "sessions"));
+  });
+
+  it("ignores an empty CODEX_HOME rather than resolving to sessions/", () => {
+    const paths = resolveCodexPaths({ HOME: "/home/someone", CODEX_HOME: "   " });
+
+    expect(paths.sessionsRoot).toBe(join("/home/someone", ".codex", "sessions"));
+  });
+
+  it("resolves an absolute sessions root even when HOME is set to nothing", () => {
+    expect(isAbsolute(resolveCodexPaths({ HOME: "" }).sessionsRoot)).toBe(true);
   });
 });
 

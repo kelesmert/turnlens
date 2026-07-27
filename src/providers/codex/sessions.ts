@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, join, relative } from "node:path";
+import { expandTilde } from "../../core/env-paths.js";
+import { resolveHome } from "../../core/home.js";
 import { collapseWhitespace } from "../../core/text.js";
 import { CODEX_USAGE_MODEL, parseCodexRecord } from "./parser.js";
 import type { ProviderAdapter, SessionRef } from "../../core/types.js";
@@ -16,8 +17,24 @@ const SESSION_UUID_PATTERN =
 const UNNAMED_SESSION = "(unnamed session)";
 const UNIDENTIFIABLE_SESSION = "(name unavailable)";
 
+/**
+ * Resolves where Codex keeps its transcripts.
+ *
+ * `CODEX_HOME` names **one** directory. ccusage splits it on commas so it can
+ * aggregate several homes into a single report; Codex documents no comma form,
+ * and TurnLens watches one session at a time, so splitting here would ship
+ * behaviour no observed agent has. A comma stays part of the path.
+ *
+ * The fallback home comes from `resolveHome` so this module, its Claude Code
+ * sibling and `core/paths.ts` all agree on where the user lives.
+ */
 export function resolveCodexPaths(env: NodeJS.ProcessEnv = process.env): CodexPaths {
-  const home = env["CODEX_HOME"] ?? join(homedir(), ".codex");
+  const configured = env["CODEX_HOME"];
+  const home =
+    configured !== undefined && configured.trim() !== ""
+      ? expandTilde(configured, env)
+      : join(resolveHome(env), ".codex");
+
   return {
     sessionsRoot: join(home, "sessions"),
     sessionIndexFile: join(home, "session_index.jsonl"),
