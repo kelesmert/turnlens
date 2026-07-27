@@ -22,7 +22,7 @@ Supported agents: **Codex** and **Claude Code**.
 
 ## Install
 
-Requires Node 20 or newer. No runtime dependencies.
+Requires Node 22 or newer. No runtime dependencies.
 
 **Not on npm yet.** Until it is published, run it from source:
 
