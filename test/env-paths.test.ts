@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { describe, expect, it } from "vitest";
 import { expandTilde, pathListFromEnv } from "../src/core/env-paths.js";
 
@@ -47,16 +47,19 @@ describe("pathListFromEnv", () => {
     expect(pathListFromEnv(",,,", env)).toEqual([]);
   });
 
+  // Expectations run through `normalize` for the reason ARCHITECTURE.md gives:
+  // a literal separator is a Linux assumption, and these three carried one.
+  // Windows resolves "/a" and "\\a" to the same place, and canonical form wins.
   it("splits on commas and trims each entry", () => {
-    expect(pathListFromEnv(" /a , /b ", env)).toEqual(["/a", "/b"]);
+    expect(pathListFromEnv(" /a , /b ", env)).toEqual([normalize("/a"), normalize("/b")]);
   });
 
   it("drops empty entries between separators", () => {
-    expect(pathListFromEnv("/a,,/b", env)).toEqual(["/a", "/b"]);
+    expect(pathListFromEnv("/a,,/b", env)).toEqual([normalize("/a"), normalize("/b")]);
   });
 
   it("collapses duplicates, keeping the first occurrence in place", () => {
-    expect(pathListFromEnv("/b,/a,/b", env)).toEqual(["/b", "/a"]);
+    expect(pathListFromEnv("/b,/a,/b", env)).toEqual([normalize("/b"), normalize("/a")]);
   });
 
   it("expands a tilde in every entry", () => {
