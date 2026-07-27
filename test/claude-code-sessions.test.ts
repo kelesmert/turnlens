@@ -89,6 +89,17 @@ describe("resolveClaudeCodePaths", () => {
 
     for (const root of projectRoots) expect(isAbsolute(root)).toBe(true);
   });
+
+  /**
+   * The roots have to leave the module for the failure to be diagnosable. A user
+   * told only "no sessions were found" cannot tell a misconfigured
+   * `CLAUDE_CONFIG_DIR` from an agent that has never run.
+   */
+  it("reports the roots it searches, so a failure can name them", () => {
+    const paths = resolveClaudeCodePaths({ HOME: "/home/someone" });
+
+    expect(createClaudeCodeAdapter(paths).roots).toEqual(paths.projectRoots);
+  });
 });
 
 describe("listAllSessionsNewestFirst", () => {

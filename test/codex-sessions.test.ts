@@ -56,6 +56,12 @@ describe("resolveCodexPaths", () => {
   it("resolves an absolute sessions root even when HOME is set to nothing", () => {
     expect(isAbsolute(resolveCodexPaths({ HOME: "" }).sessionsRoot)).toBe(true);
   });
+
+  it("reports the root it searches, so a failure can name it", () => {
+    const paths = resolveCodexPaths({ CODEX_HOME: "/custom/codex" });
+
+    expect(createCodexAdapter(paths).roots).toEqual([paths.sessionsRoot]);
+  });
 });
 
 describe("loadSessionNames", () => {

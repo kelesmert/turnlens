@@ -107,6 +107,7 @@ export function createClaudeCodeAdapter(
   return {
     id: "claude-code",
     usageModel: CLAUDE_CODE_USAGE_MODEL,
+    roots: paths.projectRoots,
     listSessions: () => listAllSessionsNewestFirst(paths),
     parseRecord,
   };

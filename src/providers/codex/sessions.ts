@@ -123,6 +123,7 @@ export function createCodexAdapter(paths: CodexPaths = resolveCodexPaths()): Pro
   return {
     id: "codex",
     usageModel: CODEX_USAGE_MODEL,
+    roots: [paths.sessionsRoot],
     listSessions: () => listAllSessionsNewestFirst(paths),
     parseRecord: parseCodexRecord,
   };

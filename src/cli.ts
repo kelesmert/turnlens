@@ -3,7 +3,7 @@ import { createInterface } from "node:readline/promises";
 import { acquireSessionLock } from "./core/lock.js";
 import { resolveSessionCsvPath, resolveSessionLockDir } from "./core/paths.js";
 import { truncate } from "./core/text.js";
-import { chooseSession, parseCliOptions } from "./options.js";
+import { chooseSession, describeMissingSessions, parseCliOptions } from "./options.js";
 import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
 import { PROVIDER_IDS, getAdapter } from "./providers/registry.js";
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
 
   const adapter = getAdapter(providerId);
   const sessions = (await adapter.listSessions()).slice(0, SESSION_LIST_LIMIT);
-  if (sessions.length === 0) throw new Error(`No ${providerId} session files were found.`);
+  if (sessions.length === 0) throw new Error(describeMissingSessions(providerId, adapter.roots));
 
   const selected = await selectSession(sessions);
   const includePromptPreview =

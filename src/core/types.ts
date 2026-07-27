@@ -127,6 +127,15 @@ export interface SessionRef {
 export interface ProviderAdapter {
   readonly id: string;
   readonly usageModel: UsageModel;
+  /**
+   * The directories `listSessions` searches.
+   *
+   * Reported so a failure can name them. An empty listing has two very
+   * different causes -- the agent has never run, or it was configured to write
+   * somewhere TurnLens is not looking -- and without these the message cannot
+   * tell a user which one they have.
+   */
+  readonly roots: readonly string[];
   listSessions(): Promise<readonly SessionRef[]>;
   /**
    * Converts one raw session record into zero or more events.

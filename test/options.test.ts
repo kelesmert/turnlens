@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseSession, parseCliOptions } from "../src/options.js";
+import { chooseSession, describeMissingSessions, parseCliOptions } from "../src/options.js";
 import type { SessionRef } from "../src/core/types.js";
 
 /** A terminal exists, so the CLI is allowed to ask a question. */
@@ -112,5 +112,46 @@ describe("chooseSession", () => {
 
   it("rejects a negative number", () => {
     expect(() => chooseSession(sessions, "-1")).toThrow("Enter a number from 1 to 3.");
+  });
+});
+
+describe("describeMissingSessions", () => {
+  const roots = ["/home/someone/.config/claude/projects", "/home/someone/.claude/projects"];
+
+  it("keeps the sentence the message has always opened with", () => {
+    expect(describeMissingSessions("claude-code", roots, {})).toMatch(
+      /^No claude-code session files were found\./u,
+    );
+  });
+
+  it("names every root it searched", () => {
+    const message = describeMissingSessions("claude-code", roots, {});
+
+    for (const root of roots) expect(message).toContain(root);
+  });
+
+  /**
+   * An unset variable is as informative as a set one here. Someone diagnosing an
+   * empty listing needs to know whether their configuration took effect, and
+   * "not set" answers that as directly as a value does.
+   */
+  it("reports the variables that steer Claude Code, set or not", () => {
+    const message = describeMissingSessions("claude-code", roots, {
+      CLAUDE_CONFIG_DIR: "/somewhere/cc",
+    });
+
+    expect(message).toContain("CLAUDE_CONFIG_DIR=/somewhere/cc");
+    expect(message).toContain("XDG_CONFIG_HOME is not set");
+  });
+
+  it("reports the variable that steers Codex", () => {
+    const message = describeMissingSessions("codex", ["/home/someone/.codex/sessions"], {});
+
+    expect(message).toContain("CODEX_HOME is not set");
+    expect(message).not.toContain("CLAUDE_CONFIG_DIR");
+  });
+
+  it("says so plainly when a provider searched nowhere at all", () => {
+    expect(describeMissingSessions("codex", [], {})).toContain("No directories were searched");
   });
 });

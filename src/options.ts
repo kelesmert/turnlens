@@ -102,3 +102,47 @@ export function chooseSession(sessions: readonly SessionRef[], answer: string): 
   if (selected === undefined) throw new Error(`Enter a number from 1 to ${sessions.length}.`);
   return selected;
 }
+
+/**
+ * Which environment variables steer each provider's search.
+ *
+ * Listed here rather than on the adapter because they are message content: the
+ * only reason TurnLens names them is to help someone reading a failure, and
+ * nothing in the pipeline reads this.
+ */
+const SEARCH_VARIABLES: Readonly<Record<ProviderId, readonly string[]>> = {
+  codex: ["CODEX_HOME"],
+  "claude-code": ["CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME"],
+};
+
+/**
+ * Explains an empty session listing by naming where TurnLens looked.
+ *
+ * An empty listing has two causes that look identical from the outside: the
+ * agent has never run on this machine, or it writes somewhere TurnLens is not
+ * searching. The old message -- one sentence, no paths -- left a user unable to
+ * tell those apart, and on a machine where a configuration variable is set to
+ * the wrong place that is the whole diagnosis.
+ *
+ * An unset variable is reported as deliberately as a set one. "Not set" is what
+ * tells someone their export never reached this process.
+ */
+export function describeMissingSessions(
+  providerId: ProviderId,
+  roots: readonly string[],
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const searched =
+    roots.length === 0
+      ? ["No directories were searched."]
+      : ["Searched:", ...roots.map((root) => `  ${root}`)];
+
+  const variables = SEARCH_VARIABLES[providerId].map((name) => {
+    const value = env[name];
+    return value === undefined || value.trim() === "" ? `${name} is not set` : `${name}=${value}`;
+  });
+
+  return [`No ${providerId} session files were found.`, "", ...searched, "", ...variables].join(
+    "\n",
+  );
+}
