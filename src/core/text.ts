@@ -19,6 +19,21 @@ export function truncate(text: string, width: number): string {
 }
 
 /**
+ * Shortens from the front, keeping the end.
+ *
+ * The opposite of `truncate`, and it exists for identifiers. A Codex session id
+ * is `<year>/<month>/<day>/rollout-<timestamp>-<uuid>`; the uuid identifies it
+ * and the date is already shown in its own column, so cutting from the right
+ * would discard the only part worth reading.
+ */
+export function truncateEnd(text: string, width: number): string {
+  if (width <= 0) return "";
+  if (text.length <= width) return text;
+  if (width <= 3) return text.slice(text.length - width);
+  return `...${text.slice(text.length - (width - 3))}`;
+}
+
+/**
  * Builds the stored form of a user prompt.
  *
  * Collapsing newlines keeps a CSV row on one line; the length cap limits how

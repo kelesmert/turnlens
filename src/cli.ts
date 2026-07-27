@@ -2,11 +2,11 @@
 import { createInterface } from "node:readline/promises";
 import { acquireSessionLock } from "./core/lock.js";
 import { resolveSessionCsvPath, resolveSessionLockDir } from "./core/paths.js";
-import { truncate } from "./core/text.js";
 import { chooseSession, describeMissingSessions, parseCliOptions } from "./options.js";
 import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
 import { PROVIDER_IDS, getAdapter } from "./providers/registry.js";
+import { formatSessionListing } from "./ui/live-table.js";
 import { confirmYesNo } from "./ui/prompts.js";
 import { summariseCsv } from "./ui/summary.js";
 import { runWatch } from "./watch.js";
@@ -139,12 +139,7 @@ async function main(): Promise<void> {
 }
 
 async function selectSession(sessions: readonly SessionRef[]): Promise<SessionRef> {
-  write(["", `Available sessions, most recent first`, "=".repeat(RULE_WIDTH)]);
-  sessions.forEach((session, index) => {
-    const when = new Date(session.lastActivityMs).toISOString().slice(0, 19).replace("T", " ");
-    const name = truncate(session.sessionName, 42).padEnd(42);
-    write([`${String(index + 1).padStart(3)}  ${when}  ${name}  ${session.sessionId}`]);
-  });
+  write(formatSessionListing(sessions));
 
   const readline = createInterface({ input: process.stdin, output: process.stdout });
   let answer: string;

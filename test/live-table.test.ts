@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatTableHeader, formatTurnRow, formatWindowLabel } from "../src/ui/live-table.js";
+import {
+  SESSION_LISTING_WIDTH,
+  formatSessionListing,
+  formatTableHeader,
+  formatTurnRow,
+  formatWindowLabel,
+} from "../src/ui/live-table.js";
 import { emptyUsage } from "../src/core/usage.js";
-import type { NormalizedTurn } from "../src/core/types.js";
+import type { NormalizedTurn, SessionRef } from "../src/core/types.js";
 
 function turn(overrides: Partial<NormalizedTurn> = {}): NormalizedTurn {
   return {
@@ -159,5 +165,62 @@ describe("cost column", () => {
     const [header] = formatTableHeader({ primaryWindowMinutes: 10_080 });
     const [row] = formatTurnRow(turn({ rateLimits: { primaryWindowMinutes: 10_080 } }));
     expect(row?.length).toBe(header?.length);
+  });
+});
+
+describe("formatSessionListing", () => {
+  function session(sessionId: string, sessionName: string): SessionRef {
+    return {
+      provider: "codex",
+      path: `/sessions/${sessionId}.jsonl`,
+      sessionId,
+      sessionName,
+      lastActivityMs: Date.UTC(2026, 6, 28, 0, 22, 51),
+    };
+  }
+
+  const codexId = "2026/07/28/rollout-2026-07-28T00-22-51-019fa575-89b7-79a1-8214-52d50b4f7269";
+  const claudeId = "d074574b-6322-42a0-a1d0-a8200c46a0a9";
+
+  /**
+   * The defect this exists for.
+   *
+   * The listing drew a 100-character rule and then printed rows of 106 and 145
+   * characters under it. Any terminal narrower than the row wrapped it, which is
+   * what garbled the first Windows run's output.
+   */
+  it("keeps every line inside the rule it draws", () => {
+    const lines = formatSessionListing([
+      session(codexId, "Hesapla 7x7"),
+      session(claudeId, "a very long session name that will not fit in its column at all"),
+    ]);
+
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(SESSION_LISTING_WIDTH);
+  });
+
+  it("numbers the rows from one, because that is what the user types", () => {
+    const lines = formatSessionListing([session(claudeId, "first"), session(claudeId, "second")]);
+
+    expect(lines.at(-2)).toMatch(/^\s+1\s/u);
+    expect(lines.at(-1)).toMatch(/^\s+2\s/u);
+  });
+
+  it("keeps the identifying tail of a long session id", () => {
+    const lines = formatSessionListing([session(codexId, "Hesapla 7x7")]);
+
+    expect(lines.at(-1)).toContain("019fa575-89b7-79a1-8214-52d50b4f7269");
+  });
+
+  it("leaves a session id that already fits", () => {
+    const lines = formatSessionListing([session(claudeId, "short")]);
+
+    expect(lines.at(-1)).toContain(claudeId);
+  });
+
+  it("still shows the name and the time", () => {
+    const lines = formatSessionListing([session(claudeId, "Hesapla 7x7")]);
+
+    expect(lines.at(-1)).toContain("Hesapla 7x7");
+    expect(lines.at(-1)).toContain("2026-07-28 00:22:51");
   });
 });
