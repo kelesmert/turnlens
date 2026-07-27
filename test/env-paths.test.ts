@@ -69,4 +69,21 @@ describe("pathListFromEnv", () => {
   it("collapses entries that differ only before expansion", () => {
     expect(pathListFromEnv("~/a,/home/someone/a", env)).toEqual([join("/home/someone", "a")]);
   });
+
+  /**
+   * Deduplication compares directories, not spellings.
+   *
+   * Found on Windows, where the first assertion above failed: `~/a` expands
+   * through `join` and comes back with backslashes, while a path the user typed
+   * with forward slashes does not, so two names for one directory survived as
+   * two roots. A doubled separator is the same defect in a form Linux can see.
+   */
+  it("collapses two spellings of one directory", () => {
+    expect(pathListFromEnv("/home/someone//a,/home/someone/a", env)).toEqual([
+      join("/home/someone", "a"),
+    ]);
+    expect(pathListFromEnv("/home/someone/b/,/home/someone/./b", env)).toEqual([
+      join("/home/someone", "b"),
+    ]);
+  });
 });

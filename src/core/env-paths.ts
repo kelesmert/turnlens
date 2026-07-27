@@ -1,5 +1,22 @@
-import { join } from "node:path";
+import { join, normalize, parse } from "node:path";
 import { resolveHome } from "./home.js";
+
+/**
+ * Reduces a path to one spelling, so two names for a directory compare equal.
+ *
+ * Deduplication has to compare directories rather than strings. `~/a` expands
+ * through `join` and comes back with the platform separator, while a path the
+ * user typed keeps whatever they typed, so on Windows `~/a` and `C:/Users/me/a`
+ * survived as two roots naming one directory -- and every session in it was
+ * listed twice. `normalize` settles separators, `.` segments and doubled
+ * slashes; the trailing separator is removed here because `normalize` keeps it,
+ * except on a root, where removing it would leave `C:` or nothing.
+ */
+function canonicalise(value: string): string {
+  const normalized = normalize(value);
+  if (normalized === parse(normalized).root) return normalized;
+  return normalized.replace(/[\\/]+$/u, "");
+}
 
 /**
  * Replaces a leading `~` with the user's home directory.
@@ -44,7 +61,7 @@ export function pathListFromEnv(
   for (const entry of value.split(",")) {
     const trimmed = entry.trim();
     if (trimmed === "") continue;
-    seen.add(expandTilde(trimmed, env));
+    seen.add(canonicalise(expandTilde(trimmed, env)));
   }
 
   return [...seen];
