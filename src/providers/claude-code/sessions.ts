@@ -1,6 +1,7 @@
 import { open, readdir, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, join } from "node:path";
+import { pathListFromEnv } from "../../core/env-paths.js";
+import { resolveHome } from "../../core/home.js";
 import { collapseWhitespace } from "../../core/text.js";
 import { CLAUDE_CODE_USAGE_MODEL, createClaudeCodeParser } from "./parser.js";
 import type { ProviderAdapter, SessionRef } from "../../core/types.js";
@@ -25,26 +26,36 @@ const NAME_TAIL_BYTES = 256 * 1024;
  * Resolves where Claude Code keeps its transcripts.
  *
  * `CLAUDE_CONFIG_DIR` replaces the defaults rather than adding to them, and its
- * documented form allows a comma-separated list. Both defaults are checked
- * because Claude Code has used both over time.
+ * documented form allows a comma-separated list.
+ *
+ * Both defaults are current, and they are two different conventions rather than
+ * one superseding the other: the first is the XDG configuration directory, the
+ * second the dotfile in the home directory. An earlier comment here said Claude
+ * Code "has used both over time", which named history as the reason and was
+ * wrong -- the real reason is that `XDG_CONFIG_HOME` may move the first one
+ * anywhere, which is why it is read rather than assumed to be `~/.config`.
  */
 export function resolveClaudeCodePaths(env: NodeJS.ProcessEnv = process.env): ClaudeCodePaths {
-  const configured = env["CLAUDE_CONFIG_DIR"];
-  if (configured !== undefined && configured.trim() !== "") {
-    const roots = configured
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry !== "")
-      .map((entry) => join(entry, "projects"));
-    if (roots.length > 0) return { projectRoots: roots };
+  const configured = pathListFromEnv(env["CLAUDE_CONFIG_DIR"], env);
+  if (configured.length > 0) {
+    return { projectRoots: dedupe(configured.map((root) => join(root, "projects"))) };
   }
 
+  const home = resolveHome(env);
+  const xdgBase = env["XDG_CONFIG_HOME"];
+  const xdg = xdgBase !== undefined && xdgBase.trim() !== "" ? xdgBase : join(home, ".config");
+
   return {
-    projectRoots: [
-      join(homedir(), ".config", "claude", "projects"),
-      join(homedir(), ".claude", "projects"),
-    ],
+    projectRoots: dedupe([
+      join(xdg, "claude", "projects"),
+      join(home, ".claude", "projects"),
+    ]),
   };
+}
+
+/** Keeps the first occurrence of each root, because order is search order. */
+function dedupe(roots: readonly string[]): readonly string[] {
+  return [...new Set(roots)];
 }
 
 /**

@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createClaudeCodeAdapter,
@@ -36,6 +36,58 @@ describe("resolveClaudeCodePaths", () => {
   it("ignores an empty CLAUDE_CONFIG_DIR rather than resolving to projects/", () => {
     const { projectRoots } = resolveClaudeCodePaths({ CLAUDE_CONFIG_DIR: "   " });
     expect(projectRoots).toHaveLength(2);
+  });
+
+  /**
+   * The first default root is the XDG configuration directory, not a fixed
+   * `~/.config`. ccusage reads `XDG_CONFIG_HOME` and defaults to `~/.config`
+   * only when it is unset; hardcoding the default loses every session belonging
+   * to a user who moved their configuration.
+   */
+  it("puts the first root under XDG_CONFIG_HOME when it is set", () => {
+    const { projectRoots } = resolveClaudeCodePaths({
+      HOME: "/home/someone",
+      XDG_CONFIG_HOME: "/config/elsewhere",
+    });
+
+    expect(projectRoots[0]).toBe(join("/config/elsewhere", "claude", "projects"));
+  });
+
+  it("falls back to .config in the home directory when XDG_CONFIG_HOME is unset", () => {
+    const { projectRoots } = resolveClaudeCodePaths({ HOME: "/home/someone" });
+
+    expect(projectRoots[0]).toBe(join("/home/someone", ".config", "claude", "projects"));
+    expect(projectRoots[1]).toBe(join("/home/someone", ".claude", "projects"));
+  });
+
+  it("treats an empty XDG_CONFIG_HOME as unset", () => {
+    const { projectRoots } = resolveClaudeCodePaths({ HOME: "/home/someone", XDG_CONFIG_HOME: "" });
+
+    expect(projectRoots[0]).toBe(join("/home/someone", ".config", "claude", "projects"));
+  });
+
+  it("expands a tilde in CLAUDE_CONFIG_DIR, which a shell would have expanded", () => {
+    const { projectRoots } = resolveClaudeCodePaths({
+      HOME: "/home/someone",
+      CLAUDE_CONFIG_DIR: "~/cc",
+    });
+
+    expect(projectRoots).toEqual([join("/home/someone", "cc", "projects")]);
+  });
+
+  it("lists a root named twice only once, so its sessions are not listed twice", () => {
+    const { projectRoots } = resolveClaudeCodePaths({
+      HOME: "/home/someone",
+      CLAUDE_CONFIG_DIR: "/same/cc,/same/cc",
+    });
+
+    expect(projectRoots).toEqual([join("/same/cc", "projects")]);
+  });
+
+  it("resolves absolute roots even when HOME is set to nothing", () => {
+    const { projectRoots } = resolveClaudeCodePaths({ HOME: "" });
+
+    for (const root of projectRoots) expect(isAbsolute(root)).toBe(true);
   });
 });
 
