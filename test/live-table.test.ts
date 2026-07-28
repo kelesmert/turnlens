@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  FULL_TABLE_WIDTH,
   SESSION_LISTING_WIDTH,
   formatSessionListing,
   formatTableHeader,
@@ -83,6 +84,26 @@ describe("formatTableHeader", () => {
     for (const label of ["Time", "Status", "Prompt", "Input", "Cache", "Output", "Total", "Model"]) {
       expect(header).toContain(label);
     }
+  });
+});
+
+describe("FULL_TABLE_WIDTH", () => {
+  /**
+   * The constant is derived from the column definitions rather than written
+   * down, and this is what proves it: a column added or resized without the
+   * constant following would leave the two disagreeing here.
+   */
+  it("is the width the header actually renders to", () => {
+    const [header = ""] = formatTableHeader();
+
+    expect(header).toHaveLength(FULL_TABLE_WIDTH);
+  });
+
+  it("is the width a row renders to as well", () => {
+    const [header = ""] = formatTableHeader();
+    const [row = ""] = formatTurnRow(turn());
+
+    expect(row).toHaveLength(header.length);
   });
 });
 

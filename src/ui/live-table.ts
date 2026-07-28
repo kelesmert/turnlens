@@ -6,7 +6,33 @@ const COST_WIDTH = 10;
 const PREVIEW_WIDTH = 20;
 const ABSENT = "-";
 
+/**
+ * Names the columns so a value can be paired with its heading by identity.
+ *
+ * The pairing used to be positional, which held only while every column was
+ * always present. It is not, and a value list one shorter than the column list
+ * renders a full row of headings above the wrong numbers.
+ */
+export type ColumnId =
+  | "index"
+  | "time"
+  | "status"
+  | "prompt"
+  | "input"
+  | "cache"
+  | "output"
+  | "reasoning"
+  | "total"
+  | "cost"
+  | "primaryLimit"
+  | "secondaryLimit"
+  | "tools"
+  | "model"
+  | "effort"
+  | "duration";
+
 interface Column {
+  readonly id: ColumnId;
   readonly label: string;
   readonly width: number;
   /** Counts and percentages read better right-aligned under their heading. */
@@ -48,26 +74,9 @@ export function formatTableHeader(rateLimits?: RateLimits): readonly string[] {
  */
 export function formatTurnRow(turn: NormalizedTurn): readonly string[] {
   const columns = describeColumns(turn.rateLimits);
-  const values = [
-    String(turn.turnNumber),
-    formatClockTime(turn.at),
-    turn.status,
-    orAbsent(truncate(turn.promptPreview, PREVIEW_WIDTH)),
-    formatCount(turn.usage.inputUncached),
-    formatCount(turn.usage.cacheRead),
-    formatCount(turn.usage.output),
-    formatCount(turn.usage.reasoning),
-    formatCount(turn.usage.total),
-    formatCost(turn.costUsd),
-    formatPercent(turn.rateLimits?.primaryUsedPercent),
-    formatPercent(turn.rateLimits?.secondaryUsedPercent),
-    formatCount(countToolCalls(turn)),
-    orAbsent(truncate(turn.model, MODEL_WIDTH)),
-    orAbsent(turn.reasoningEffort),
-    formatDuration(turn.durationMs),
-  ];
+  const values = describeValues(turn);
 
-  const lines = [columns.map((column, index) => fit(values[index] ?? ABSENT, column)).join(" ")];
+  const lines = [columns.map((column) => fit(values[column.id], column)).join(" ")];
 
   const breakdown = describeToolCalls(turn.toolCalls);
   if (breakdown !== "") lines.push(`      Tool calls: ${breakdown}`);
@@ -82,23 +91,75 @@ export function formatTurnRow(turn: NormalizedTurn): readonly string[] {
  */
 function describeColumns(rateLimits: RateLimits | undefined): readonly Column[] {
   return [
-    { label: "#", width: 4, alignRight: true },
-    { label: "Time", width: 8 },
-    { label: "Status", width: 9 },
-    { label: "Prompt", width: PREVIEW_WIDTH },
-    { label: "Input", width: 11, alignRight: true },
-    { label: "Cache", width: 11, alignRight: true },
-    { label: "Output", width: 9, alignRight: true },
-    { label: "Reason", width: 9, alignRight: true },
-    { label: "Total", width: 12, alignRight: true },
-    { label: "Cost", width: COST_WIDTH, alignRight: true },
-    { label: formatWindowLabel(rateLimits?.primaryWindowMinutes), width: 8, alignRight: true },
-    { label: formatWindowLabel(rateLimits?.secondaryWindowMinutes), width: 8, alignRight: true },
-    { label: "Tools", width: 5, alignRight: true },
-    { label: "Model", width: MODEL_WIDTH },
-    { label: "Effort", width: 8 },
-    { label: "Duration", width: 9, alignRight: true },
+    { id: "index", label: "#", width: 4, alignRight: true },
+    { id: "time", label: "Time", width: 8 },
+    { id: "status", label: "Status", width: 9 },
+    { id: "prompt", label: "Prompt", width: PREVIEW_WIDTH },
+    { id: "input", label: "Input", width: 11, alignRight: true },
+    { id: "cache", label: "Cache", width: 11, alignRight: true },
+    { id: "output", label: "Output", width: 9, alignRight: true },
+    { id: "reasoning", label: "Reason", width: 9, alignRight: true },
+    { id: "total", label: "Total", width: 12, alignRight: true },
+    { id: "cost", label: "Cost", width: COST_WIDTH, alignRight: true },
+    {
+      id: "primaryLimit",
+      label: formatWindowLabel(rateLimits?.primaryWindowMinutes),
+      width: 8,
+      alignRight: true,
+    },
+    {
+      id: "secondaryLimit",
+      label: formatWindowLabel(rateLimits?.secondaryWindowMinutes),
+      width: 8,
+      alignRight: true,
+    },
+    { id: "tools", label: "Tools", width: 5, alignRight: true },
+    { id: "model", label: "Model", width: MODEL_WIDTH },
+    { id: "effort", label: "Effort", width: 8 },
+    { id: "duration", label: "Duration", width: 9, alignRight: true },
   ];
+}
+
+/**
+ * The width the full table renders to, computed from the columns themselves.
+ *
+ * Never written down. A column added, removed or resized moves this without
+ * anyone remembering to, which is the property that keeps the layout rules
+ * honest once they start comparing it against a terminal.
+ */
+export const FULL_TABLE_WIDTH = renderedWidth(describeColumns(undefined));
+
+/** Column widths plus the single space between each neighbouring pair. */
+function renderedWidth(columns: readonly Column[]): number {
+  if (columns.length === 0) return 0;
+  return columns.reduce((sum, column) => sum + column.width, 0) + columns.length - 1;
+}
+
+/**
+ * Every cell one turn can produce, keyed by the column it belongs under.
+ *
+ * Building all of them regardless of which columns are shown keeps this free of
+ * layout decisions: the renderer reads the cells it has headings for.
+ */
+function describeValues(turn: NormalizedTurn): Readonly<Record<ColumnId, string>> {
+  return {
+    index: String(turn.turnNumber),
+    time: formatClockTime(turn.at),
+    status: turn.status,
+    prompt: orAbsent(truncate(turn.promptPreview, PREVIEW_WIDTH)),
+    input: formatCount(turn.usage.inputUncached),
+    cache: formatCount(turn.usage.cacheRead),
+    output: formatCount(turn.usage.output),
+    reasoning: formatCount(turn.usage.reasoning),
+    total: formatCount(turn.usage.total),
+    cost: formatCost(turn.costUsd),
+    primaryLimit: formatPercent(turn.rateLimits?.primaryUsedPercent),
+    secondaryLimit: formatPercent(turn.rateLimits?.secondaryUsedPercent),
+    tools: formatCount(countToolCalls(turn)),
+    model: orAbsent(truncate(turn.model, MODEL_WIDTH)),
+    effort: orAbsent(turn.reasoningEffort),
+    duration: formatDuration(turn.durationMs),
+  };
 }
 
 function describeToolCalls(toolCalls: Readonly<Record<string, number>>): string {
