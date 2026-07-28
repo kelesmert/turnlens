@@ -2,7 +2,14 @@ import { appendTurn, openCsv, turnRowKey } from "./core/store/csv.js";
 import { byteLength, followLines, readCompleteLines } from "./core/tail.js";
 import { TurnAssembler } from "./core/turn-assembler.js";
 import { computeTurnCost } from "./pricing/cost.js";
-import { formatTableHeader, formatTurnRow, selectLayout } from "./ui/live-table.js";
+import {
+  FULL_TABLE_WIDTH,
+  MINIMUM_TABLE_WIDTH,
+  formatTableHeader,
+  formatTurnRow,
+  selectLayout,
+} from "./ui/live-table.js";
+import { terminalWidth } from "./ui/terminal.js";
 import type { AssembledTurn } from "./core/turn-assembler.js";
 import type { Layout } from "./ui/live-table.js";
 import type { NormalizedTurn, ProviderAdapter, SessionRef, TokenUsage } from "./core/types.js";
@@ -17,6 +24,13 @@ export interface WatchOptions {
   readonly pricing: PricingResolver;
   readonly signal?: AbortSignal;
   readonly write?: (line: string) => void;
+  /**
+   * The width to fit the table into. Measured from the terminal when absent.
+   *
+   * A parameter rather than only a measurement so a narrow terminal is
+   * reachable from a test, which is the rule `src/options.ts` already follows.
+   */
+  readonly terminalWidth?: number;
 }
 
 /** Where rows go, and the layout the header committed them to. */
@@ -77,7 +91,13 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   const baseline = await readBaseline(options, startByte);
   const recorder = await createRecorder(options, baseline === undefined ? {} : { baseline });
 
-  const layout = selectLayout(undefined);
+  // Measured once, here, and never again: the layout it produces is handed to
+  // the header and to every row after it, so a window resized mid-run cannot
+  // leave rows misaligned with the header they were printed under.
+  const width = options.terminalWidth ?? terminalWidth(process.stdout);
+  const layout = selectLayout(width);
+
+  for (const line of describeNarrowing(layout, width)) write(line);
   for (const line of formatTableHeader(layout)) write(line);
 
   // Awaited: followLines opens the file and captures its rewrite anchor eagerly,
@@ -89,6 +109,52 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   for await (const line of lines) {
     await consumeLine(line, options, recorder, { write, layout });
   }
+}
+
+/**
+ * Explains a table that is showing fewer columns than it has.
+ *
+ * Empty when nothing was dropped, because silence is the honest signal that
+ * everything is present. A user who sees a short table asks where the rest
+ * went, and the answer needs three parts: the width there is, the width it
+ * would take, and what to do about it.
+ */
+export function describeNarrowing(layout: Layout, width: number | undefined): readonly string[] {
+  const total = selectLayout(undefined).columns.length;
+  if (width === undefined || layout.columns.length === total) return [];
+
+  const wrapping =
+    width < MINIMUM_TABLE_WIDTH ? " No layout fits this width, so rows will wrap." : "";
+
+  const text =
+    `Terminal is ${width} columns wide; ${FULL_TABLE_WIDTH} are needed for all ${total} ` +
+    `columns. Showing ${layout.columns.length} -- widen the window or set COLUMNS.${wrapping}`;
+
+  return wrapWords(text, Math.max(width, MINIMUM_TABLE_WIDTH));
+}
+
+/**
+ * Breaks a sentence at spaces so it fits the width it is describing.
+ *
+ * Returned as lines rather than one string with newlines in it, because the
+ * caller writes a line at a time and a row that contains a newline is the thing
+ * the whole table format is careful never to produce.
+ */
+function wrapWords(text: string, width: number): readonly string[] {
+  const lines: string[] = [];
+  let line = "";
+
+  for (const word of text.split(" ")) {
+    if (line === "") line = word;
+    else if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
+    else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line !== "") lines.push(line);
+
+  return lines;
 }
 
 async function createRecorder(

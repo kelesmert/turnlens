@@ -5,8 +5,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { CSV_HEADER, openCsv, parseCsvRow } from "../src/core/store/csv.js";
 import { byteLength } from "../src/core/tail.js";
 import { createCodexAdapter } from "../src/providers/codex/sessions.js";
-import { importHistory, runWatch } from "../src/watch.js";
+import { describeNarrowing, importHistory, runWatch } from "../src/watch.js";
 import { createPricingResolver } from "../src/pricing/resolver.js";
+import {
+  FULL_TABLE_WIDTH,
+  MINIMUM_TABLE_WIDTH,
+  selectLayout,
+} from "../src/ui/live-table.js";
 import type { SessionRef } from "../src/core/types.js";
 import type { PricingResolver } from "../src/pricing/types.js";
 
@@ -204,6 +209,91 @@ describe("runWatch over a session that is still being written", () => {
     expect(totals).not.toContain(1_039_876);
     expect(statuses).toContain("aborted");
     expect(printed.join("\n")).toContain("aborted");
+  });
+});
+
+describe("describeNarrowing", () => {
+  it("says nothing when every column is shown", () => {
+    expect(describeNarrowing(selectLayout(undefined), undefined)).toEqual([]);
+    expect(describeNarrowing(selectLayout(FULL_TABLE_WIDTH), FULL_TABLE_WIDTH)).toEqual([]);
+  });
+
+  /**
+   * A message about a terminal being too narrow, wrapped by that terminal, is
+   * the defect it is reporting.
+   */
+  it("fits the terminal it is complaining about", () => {
+    for (let width = 60; width <= FULL_TABLE_WIDTH; width += 1) {
+      for (const line of describeNarrowing(selectLayout(width), width)) {
+        expect(line.length).toBeLessThanOrEqual(Math.max(width, MINIMUM_TABLE_WIDTH));
+      }
+    }
+  });
+
+  /**
+   * The user's question on seeing a short table is "where did the rest go", and
+   * the answer has three parts: how wide the terminal is, how wide it would have
+   * to be, and what to do about it.
+   */
+  it("reports the width it has, the width it needs, and how to get there", () => {
+    const notice = describeNarrowing(selectLayout(120), 120).join(" ");
+
+    expect(notice).toContain("120");
+    expect(notice).toContain(String(FULL_TABLE_WIDTH));
+    expect(notice).toContain("11");
+    expect(notice).toContain("COLUMNS");
+  });
+
+  it("warns that rows will wrap when even the narrowest table will not fit", () => {
+    const tooNarrow = MINIMUM_TABLE_WIDTH - 1;
+    const notice = describeNarrowing(selectLayout(tooNarrow), tooNarrow).join(" ");
+
+    expect(notice).toContain("wrap");
+  });
+});
+
+describe("runWatch in a narrow terminal", () => {
+  it("prints the notice above a table whose rows match its header", async () => {
+    const records = (await readFile(FIXTURE, "utf8")).split("\n").filter((l) => l.trim() !== "");
+    const dir = await mkdtemp(join(tmpdir(), "turnlens-narrow-"));
+    const sessionPath = join(dir, "growing.jsonl");
+    const csvPath = join(dir, "session.csv");
+
+    await writeFile(sessionPath, `${records.slice(0, 96).join("\n")}\n`, "utf8");
+
+    const controller = new AbortController();
+    const printed: string[] = [];
+    const watching = runWatch({
+      session: { ...SESSION, path: sessionPath },
+      adapter: createCodexAdapter(),
+      csvPath,
+      includePromptPreview: false,
+      pricing: await offlineResolver(),
+      signal: controller.signal,
+      terminalWidth: 100,
+      write: (line) => printed.push(line),
+    });
+
+    await appendFile(sessionPath, `${records.slice(96).join("\n")}\n`, "utf8");
+    await waitForRows(csvPath, 2);
+    controller.abort();
+    await watching;
+
+    // The notice may take more than one line, so the rule locates the header
+    // rather than a fixed index.
+    const rule = printed.findIndex((line) => /^-+$/u.test(line));
+
+    expect(printed[0]).toContain("100");
+    expect(rule).toBeGreaterThan(0);
+    expect(printed[rule - 1]).toHaveLength(selectLayout(100).width);
+
+    // Every table row, skipping the notice, the header, the rule, and the tool
+    // breakdown lines that follow a row rather than replacing it. A row cannot
+    // be told from a breakdown by its indent: the turn-number column survives
+    // at this width and is right-aligned, so rows begin with spaces too.
+    const rows = printed.slice(rule + 1).filter((line) => !line.includes("Tool calls:"));
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row).toHaveLength(selectLayout(100).width);
   });
 });
 
