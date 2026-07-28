@@ -384,6 +384,17 @@ const SESSION_ID_WIDTH = 39;
 const SESSION_NAME_MIN_WIDTH = 12;
 
 /**
+ * The name width below which the date is dropped instead of squeezing further.
+ *
+ * The date is the listing's droppable column, but dropping it frees 21
+ * characters, so doing it to recover one wastes the rest of the terminal: a
+ * 100-column window would print a 79-column listing. Below 24 the name stops
+ * carrying enough of a session title to recognise it by, and at that point the
+ * date is the cheaper thing to lose.
+ */
+const SESSION_NAME_KEEPS_WHEN = 24;
+
+/**
  * Width of the full session listing, and of the rule drawn above it.
  *
  * Derived, for the reason `FULL_TABLE_WIDTH` is. The columns used to add up to
@@ -457,7 +468,13 @@ function describeListing(availableWidth: number | undefined): {
       ? SESSION_LISTING_WIDTH
       : availableWidth - LAST_COLUMN_RESERVE;
 
-  const showWhen = usable >= SESSION_LISTING_WIDTH;
+  // What the name could be if the date stayed. The date leaves only when that
+  // is too little to recognise a session by, so a 21-character column is never
+  // dropped to recover one character.
+  const nameBesideWhen =
+    usable - (INDEX_WIDTH + WHEN_WIDTH + SESSION_ID_WIDTH) - LISTING_GAP.length * 3;
+  const showWhen = nameBesideWhen >= SESSION_NAME_KEEPS_WHEN;
+
   const fixed = INDEX_WIDTH + SESSION_ID_WIDTH + (showWhen ? WHEN_WIDTH : 0);
   const gaps = LISTING_GAP.length * (showWhen ? 3 : 2);
 

@@ -387,6 +387,31 @@ describe("formatSessionListing", () => {
   });
 
   /**
+   * The date is the column that goes, but it does not go at the first
+   * character of pressure. Dropping 21 characters to recover one wastes the
+   * rest of the terminal, so the name gives ground first and the date leaves
+   * only once the name would stop being recognisable.
+   */
+  it("keeps the date while it costs the name little", () => {
+    // Measured on the rule, not the row: a row ends where its id ends, and a
+    // Claude Code id is three characters shorter than the column that holds it.
+    const at100 = formatSessionListing([session(claudeId, "Hesapla 7x7")], 100);
+    const at92 = formatSessionListing([session(claudeId, "Hesapla 7x7")], 92);
+
+    expect(at100.at(-1)).toContain("2026-07-28 00:22:51");
+    expect(at100[2]).toHaveLength(99);
+    expect(at92.at(-1)).toContain("2026-07-28 00:22:51");
+    expect(at92[2]).toHaveLength(91);
+  });
+
+  it("gives the date up once the name would stop being recognisable", () => {
+    const row = formatSessionListing([session(claudeId, "Hesapla 7x7")], 91).at(-1) ?? "";
+
+    expect(row).not.toContain("2026-07-28 00:22:51");
+    expect(row).toContain(claudeId);
+  });
+
+  /**
    * What the user needs to choose with: the number they type, the name they
    * recognise, and the id that matches a CSV filename.
    */
