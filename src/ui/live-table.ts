@@ -7,6 +7,16 @@ const PREVIEW_WIDTH = 20;
 const ABSENT = "-";
 
 /**
+ * How far the two flexible columns may be squeezed.
+ *
+ * Twelve characters still shows the distinguishing head of a prompt and enough
+ * of a model name to tell one family from another. Below that both become
+ * ellipsis with a hint attached, which is worse than dropping the column.
+ */
+const PREVIEW_MIN_WIDTH = 12;
+const MODEL_MIN_WIDTH = 12;
+
+/**
  * Names the columns so a value can be paired with its heading by identity.
  *
  * The pairing used to be positional, which held only while every column was
@@ -31,12 +41,28 @@ export type ColumnId =
   | "effort"
   | "duration";
 
-interface Column {
+export interface Column {
   readonly id: ColumnId;
   readonly label: string;
   readonly width: number;
+  /** Absent when the column cannot be shortened without becoming unreadable. */
+  readonly minWidth?: number;
+  /** Absent when the column is never dropped. Lower goes first. */
+  readonly dropPriority?: number;
   /** Counts and percentages read better right-aligned under their heading. */
   readonly alignRight?: true;
+}
+
+/**
+ * The columns chosen for one run, fixed for its whole life.
+ *
+ * A layout is selected once, before the header is printed, and handed to every
+ * row after it. Nothing downstream measures anything, so a row cannot disagree
+ * with the header above it however the window is resized afterwards.
+ */
+export interface Layout {
+  readonly columns: readonly Column[];
+  readonly width: number;
 }
 
 /**
@@ -59,11 +85,25 @@ export function formatWindowLabel(windowMinutes: number | undefined): string {
  * `rateLimits` only supplies the two limit-column headings. Passing none is the
  * normal case at startup, before any usage record has been seen.
  */
-export function formatTableHeader(rateLimits?: RateLimits): readonly string[] {
-  const columns = describeColumns(rateLimits);
-  const header = columns.map((column) => fit(column.label, column)).join(" ");
+export function formatTableHeader(layout: Layout, rateLimits?: RateLimits): readonly string[] {
+  const header = layout.columns
+    .map((column) => fit(labelFor(column, rateLimits), column))
+    .join(" ");
 
   return [header, "-".repeat(header.length)];
+}
+
+/**
+ * The heading a column shows, which for the two limit columns is observed.
+ *
+ * Their labels are the only part of the header that depends on data, so they
+ * are resolved here rather than baked into the layout, which is chosen before
+ * any usage record has been seen.
+ */
+function labelFor(column: Column, rateLimits: RateLimits | undefined): string {
+  if (column.id === "primaryLimit") return formatWindowLabel(rateLimits?.primaryWindowMinutes);
+  if (column.id === "secondaryLimit") return formatWindowLabel(rateLimits?.secondaryWindowMinutes);
+  return column.label;
 }
 
 /**
@@ -72,51 +112,64 @@ export function formatTableHeader(rateLimits?: RateLimits): readonly string[] {
  * Always at least one line, never more than two, and never containing a newline:
  * the caller writes each returned string as its own line.
  */
-export function formatTurnRow(turn: NormalizedTurn): readonly string[] {
-  const columns = describeColumns(turn.rateLimits);
+export function formatTurnRow(layout: Layout, turn: NormalizedTurn): readonly string[] {
   const values = describeValues(turn);
-
-  const lines = [columns.map((column) => fit(values[column.id], column)).join(" ")];
+  const lines = [layout.columns.map((column) => fit(values[column.id], column)).join(" ")];
 
   const breakdown = describeToolCalls(turn.toolCalls);
-  if (breakdown !== "") lines.push(`      Tool calls: ${breakdown}`);
+  if (breakdown !== "") lines.push(formatToolCallLine(layout, breakdown));
 
   return lines;
 }
 
 /**
- * The column layout, shared by the header and the rows so they cannot drift.
+ * The tool breakdown, indented under the row it belongs to and clipped to it.
  *
- * The two limit headings are the only part that depends on observed data.
+ * The indent is measured from the turn-number column rather than fixed, because
+ * that column is dropped on a narrow terminal and an indent sized for a column
+ * that is not there points at nothing. Clipping matters for the same reason the
+ * row is clipped: a wrapped continuation line reads as damage.
  */
-function describeColumns(rateLimits: RateLimits | undefined): readonly Column[] {
+function formatToolCallLine(layout: Layout, breakdown: string): string {
+  const indexWidth = layout.columns.find((column) => column.id === "index")?.width ?? 0;
+  return truncate(`${" ".repeat(indexWidth + 2)}Tool calls: ${breakdown}`, layout.width);
+}
+
+/**
+ * Every column the table can show, widest form, in the order they are printed.
+ *
+ * `dropPriority` orders what goes first when the terminal cannot hold them all,
+ * and each position has a reason. `Reason` is already counted inside `Total`.
+ * The two limit columns read `-` on most rows and their information survives in
+ * the summary block. `Effort` is populated only for reasoning models. `Status`
+ * is near-constant, and an unusual value stands out without a heading. `Tools`
+ * loses only a count -- the breakdown line below the row survives it.
+ * `Duration` is useful but is not part of the token-and-cost question the table
+ * exists to answer. `Model` goes late because it is worth its 18 characters
+ * right up until it is the only thing left to give. `#` goes last because a row
+ * can be identified by its time.
+ *
+ * The seven columns with no `dropPriority` are never dropped: they are the
+ * question the table was built to answer.
+ */
+function describeColumns(): readonly Column[] {
   return [
-    { id: "index", label: "#", width: 4, alignRight: true },
+    { id: "index", label: "#", width: 4, dropPriority: 9, alignRight: true },
     { id: "time", label: "Time", width: 8 },
-    { id: "status", label: "Status", width: 9 },
-    { id: "prompt", label: "Prompt", width: PREVIEW_WIDTH },
+    { id: "status", label: "Status", width: 9, dropPriority: 5 },
+    { id: "prompt", label: "Prompt", width: PREVIEW_WIDTH, minWidth: PREVIEW_MIN_WIDTH },
     { id: "input", label: "Input", width: 11, alignRight: true },
     { id: "cache", label: "Cache", width: 11, alignRight: true },
     { id: "output", label: "Output", width: 9, alignRight: true },
-    { id: "reasoning", label: "Reason", width: 9, alignRight: true },
+    { id: "reasoning", label: "Reason", width: 9, dropPriority: 1, alignRight: true },
     { id: "total", label: "Total", width: 12, alignRight: true },
     { id: "cost", label: "Cost", width: COST_WIDTH, alignRight: true },
-    {
-      id: "primaryLimit",
-      label: formatWindowLabel(rateLimits?.primaryWindowMinutes),
-      width: 8,
-      alignRight: true,
-    },
-    {
-      id: "secondaryLimit",
-      label: formatWindowLabel(rateLimits?.secondaryWindowMinutes),
-      width: 8,
-      alignRight: true,
-    },
-    { id: "tools", label: "Tools", width: 5, alignRight: true },
-    { id: "model", label: "Model", width: MODEL_WIDTH },
-    { id: "effort", label: "Effort", width: 8 },
-    { id: "duration", label: "Duration", width: 9, alignRight: true },
+    { id: "primaryLimit", label: ABSENT, width: 8, dropPriority: 3, alignRight: true },
+    { id: "secondaryLimit", label: ABSENT, width: 8, dropPriority: 2, alignRight: true },
+    { id: "tools", label: "Tools", width: 5, dropPriority: 6, alignRight: true },
+    { id: "model", label: "Model", width: MODEL_WIDTH, minWidth: MODEL_MIN_WIDTH, dropPriority: 8 },
+    { id: "effort", label: "Effort", width: 8, dropPriority: 4 },
+    { id: "duration", label: "Duration", width: 9, dropPriority: 7, alignRight: true },
   ];
 }
 
@@ -127,7 +180,89 @@ function describeColumns(rateLimits: RateLimits | undefined): readonly Column[] 
  * anyone remembering to, which is the property that keeps the layout rules
  * honest once they start comparing it against a terminal.
  */
-export const FULL_TABLE_WIDTH = renderedWidth(describeColumns(undefined));
+export const FULL_TABLE_WIDTH = renderedWidth(describeColumns());
+
+/**
+ * The narrowest terminal the table can be fitted to without wrapping.
+ *
+ * Everything droppable is gone and both flexible columns are at their minimum,
+ * so there is nothing left to give. Derived for the same reason as the width
+ * above: it is a consequence of the columns, not a decision about them.
+ */
+export const MINIMUM_TABLE_WIDTH = renderedWidth(
+  describeColumns()
+    .filter((column) => column.dropPriority === undefined)
+    .map(shrunk),
+);
+
+/**
+ * Chooses the columns for a terminal of the given width.
+ *
+ * Four steps: keep everything if it fits or if there is no terminal to fit;
+ * shrink the flexible columns to their minimums; drop columns in priority order
+ * until the rest fit; then hand any space left over back to the flexible
+ * columns. The last step matters because dropping a column usually frees more
+ * than was needed, and returning that space to the prompt is what makes a
+ * narrow table worth reading.
+ *
+ * Below `MINIMUM_TABLE_WIDTH` the narrowest layout is returned rather than an
+ * impossible one. The caller says so; the table does not pretend to have fitted.
+ */
+export function selectLayout(availableWidth: number | undefined): Layout {
+  const all = describeColumns();
+  if (availableWidth === undefined || availableWidth >= FULL_TABLE_WIDTH) {
+    return { columns: all, width: FULL_TABLE_WIDTH };
+  }
+
+  const droppable = all
+    .filter((column) => column.dropPriority !== undefined)
+    .sort((a, b) => (a.dropPriority ?? 0) - (b.dropPriority ?? 0));
+
+  let kept = all.map(shrunk);
+  for (const victim of droppable) {
+    if (renderedWidth(kept) <= availableWidth) break;
+    kept = kept.filter((column) => column.id !== victim.id);
+  }
+
+  const grown = grow(kept, all, availableWidth);
+  return { columns: grown, width: renderedWidth(grown) };
+}
+
+/** The column at its minimum width, or unchanged when it has none. */
+function shrunk(column: Column): Column {
+  return column.minWidth === undefined ? column : { ...column, width: column.minWidth };
+}
+
+/**
+ * Spends leftover width on the flexible columns, prompt first.
+ *
+ * Prompt first rather than evenly: on a narrow terminal the prompt is what
+ * tells one row from another, while a model name repeats down the whole column.
+ */
+function grow(
+  kept: readonly Column[],
+  all: readonly Column[],
+  availableWidth: number,
+): readonly Column[] {
+  let columns = kept;
+
+  for (const id of GROWTH_ORDER) {
+    const spare = availableWidth - renderedWidth(columns);
+    if (spare <= 0) break;
+
+    const index = columns.findIndex((column) => column.id === id);
+    const column = columns[index];
+    const fullWidth = all.find((candidate) => candidate.id === id)?.width;
+    if (column === undefined || fullWidth === undefined) continue;
+
+    const width = Math.min(column.width + spare, fullWidth);
+    columns = columns.with(index, { ...column, width });
+  }
+
+  return columns;
+}
+
+const GROWTH_ORDER: readonly ColumnId[] = ["prompt", "model"];
 
 /** Column widths plus the single space between each neighbouring pair. */
 function renderedWidth(columns: readonly Column[]): number {

@@ -1,14 +1,27 @@
 import { describe, expect, it } from "vitest";
 import {
   FULL_TABLE_WIDTH,
+  MINIMUM_TABLE_WIDTH,
   SESSION_LISTING_WIDTH,
   formatSessionListing,
   formatTableHeader,
   formatTurnRow,
   formatWindowLabel,
+  selectLayout,
 } from "../src/ui/live-table.js";
 import { emptyUsage } from "../src/core/usage.js";
+import type { ColumnId } from "../src/ui/live-table.js";
 import type { NormalizedTurn, SessionRef } from "../src/core/types.js";
+
+const fullLayout = selectLayout(undefined);
+
+function idsAt(availableWidth: number): readonly ColumnId[] {
+  return selectLayout(availableWidth).columns.map((column) => column.id);
+}
+
+function widthOf(availableWidth: number, id: ColumnId): number | undefined {
+  return selectLayout(availableWidth).columns.find((column) => column.id === id)?.width;
+}
 
 function turn(overrides: Partial<NormalizedTurn> = {}): NormalizedTurn {
   return {
@@ -57,14 +70,14 @@ describe("formatWindowLabel", () => {
 
 describe("formatTableHeader", () => {
   it("labels the limit columns from the recorded windows rather than fixed text", () => {
-    const [header] = formatTableHeader({ primaryWindowMinutes: 300, secondaryWindowMinutes: 10_080 });
+    const [header] = formatTableHeader(fullLayout, { primaryWindowMinutes: 300, secondaryWindowMinutes: 10_080 });
 
     expect(header).toContain("5h");
     expect(header).toContain("7d");
   });
 
   it("never claims a five-hour or weekly quota when no window has been observed", () => {
-    const [header] = formatTableHeader();
+    const [header] = formatTableHeader(fullLayout);
 
     expect(header).not.toContain("5 hour");
     expect(header).not.toContain("Week");
@@ -72,14 +85,14 @@ describe("formatTableHeader", () => {
   });
 
   it("returns the column line followed by a separator rule", () => {
-    const lines = formatTableHeader();
+    const lines = formatTableHeader(fullLayout);
 
     expect(lines).toHaveLength(2);
     expect(lines[1]).toMatch(/^-+$/u);
   });
 
   it("names every column the row writes", () => {
-    const [header = ""] = formatTableHeader();
+    const [header = ""] = formatTableHeader(fullLayout);
 
     for (const label of ["Time", "Status", "Prompt", "Input", "Cache", "Output", "Total", "Model"]) {
       expect(header).toContain(label);
@@ -94,22 +107,144 @@ describe("FULL_TABLE_WIDTH", () => {
    * constant following would leave the two disagreeing here.
    */
   it("is the width the header actually renders to", () => {
-    const [header = ""] = formatTableHeader();
+    const [header = ""] = formatTableHeader(fullLayout);
 
     expect(header).toHaveLength(FULL_TABLE_WIDTH);
   });
 
   it("is the width a row renders to as well", () => {
-    const [header = ""] = formatTableHeader();
-    const [row = ""] = formatTurnRow(turn());
+    const [header = ""] = formatTableHeader(fullLayout);
+    const [row = ""] = formatTurnRow(fullLayout, turn());
 
     expect(row).toHaveLength(header.length);
   });
 });
 
+describe("selectLayout", () => {
+  const CORE: readonly ColumnId[] = ["time", "prompt", "input", "cache", "output", "total", "cost"];
+
+  /**
+   * No terminal means no window to fit. Output is going to a pipe or a file,
+   * where a dropped column is data the reader cannot get back.
+   */
+  it("keeps every column when no width is known", () => {
+    expect(fullLayout.columns).toHaveLength(16);
+    expect(fullLayout.width).toBe(FULL_TABLE_WIDTH);
+  });
+
+  it("keeps every column when the terminal is wide enough", () => {
+    expect(idsAt(FULL_TABLE_WIDTH)).toHaveLength(16);
+    expect(idsAt(FULL_TABLE_WIDTH + 40)).toHaveLength(16);
+  });
+
+  it("keeps eleven columns at the width Windows Terminal opens to", () => {
+    expect(idsAt(120)).toEqual([
+      "index",
+      "time",
+      "prompt",
+      "input",
+      "cache",
+      "output",
+      "total",
+      "cost",
+      "tools",
+      "model",
+      "duration",
+    ]);
+  });
+
+  it("keeps the core columns at the width most terminals open to", () => {
+    expect(idsAt(80)).toEqual(CORE);
+  });
+
+  /**
+   * Dropping has one order, so a narrower terminal can only ever show less.
+   * Without this a column could reappear as the window shrank, which would read
+   * as a bug in the tool rather than as a layout.
+   */
+  it("never shows a column at a narrow width that a wider one hides", () => {
+    for (let width = 61; width <= 200; width += 1) {
+      const wider = new Set(idsAt(width));
+      for (const id of idsAt(width - 1)) expect(wider.has(id)).toBe(true);
+    }
+  });
+
+  it("never shrinks a flexible column below its minimum or past its full width", () => {
+    for (let width = 60; width <= 200; width += 1) {
+      const prompt = widthOf(width, "prompt");
+      expect(prompt).toBeGreaterThanOrEqual(12);
+      expect(prompt).toBeLessThanOrEqual(20);
+
+      const model = widthOf(width, "model");
+      if (model !== undefined) {
+        expect(model).toBeGreaterThanOrEqual(12);
+        expect(model).toBeLessThanOrEqual(18);
+      }
+    }
+  });
+
+  it("returns leftover space to the prompt before the model", () => {
+    expect(widthOf(120, "prompt")).toBe(19);
+    expect(widthOf(120, "model")).toBe(12);
+  });
+
+  /**
+   * The invariant the whole feature exists for. Every threshold test above is a
+   * spot check of it; this is the statement itself.
+   */
+  it("never renders wider than the terminal, down to the floor", () => {
+    for (let width = 60; width <= 200; width += 1) {
+      const [header = ""] = formatTableHeader(selectLayout(width));
+
+      expect(header.length).toBeLessThanOrEqual(Math.max(width, MINIMUM_TABLE_WIDTH));
+    }
+  });
+
+  it("reports a floor no wider than the narrowest terminal it can serve", () => {
+    const [header = ""] = formatTableHeader(selectLayout(MINIMUM_TABLE_WIDTH));
+
+    expect(header).toHaveLength(MINIMUM_TABLE_WIDTH);
+    expect(MINIMUM_TABLE_WIDTH).toBeLessThan(80);
+  });
+});
+
+describe("a narrowed table", () => {
+  it("keeps the header and its rows the same width", () => {
+    for (const width of [80, 100, 120, 140]) {
+      const layout = selectLayout(width);
+      const [header = ""] = formatTableHeader(layout);
+      const [row = ""] = formatTurnRow(layout, turn({ durationMs: 17_691 }));
+
+      expect(row).toHaveLength(header.length);
+    }
+  });
+
+  it("clips the tool breakdown to the width of the table", () => {
+    const layout = selectLayout(80);
+    const lines = formatTurnRow(
+      layout,
+      turn({ toolCalls: { "a-tool-with-a-long-name": 3, "another-long-tool-name": 4, third: 5 } }),
+    );
+
+    expect(lines[1]?.length).toBeLessThanOrEqual(layout.width);
+  });
+
+  /**
+   * The breakdown is indented to sit under the first column of numbers. When
+   * the turn number is dropped, an indent sized for it points at nothing.
+   */
+  it("indents the tool breakdown to match the columns that survived", () => {
+    const wide = formatTurnRow(fullLayout, turn({ toolCalls: { exec: 1 } }));
+    const narrow = formatTurnRow(selectLayout(80), turn({ toolCalls: { exec: 1 } }));
+
+    expect(wide[1]?.startsWith("      Tool calls:")).toBe(true);
+    expect(narrow[1]?.startsWith("  Tool calls:")).toBe(true);
+  });
+});
+
 describe("formatTurnRow", () => {
   it("includes the turn number, thousands-separated counts and the model", () => {
-    const [row = ""] = formatTurnRow(turn());
+    const [row = ""] = formatTurnRow(fullLayout, turn());
 
     expect(row).toContain("7");
     expect(row).toContain("117,483");
@@ -119,14 +254,14 @@ describe("formatTurnRow", () => {
   });
 
   it("marks an aborted turn so it is not mistaken for completed work", () => {
-    expect(formatTurnRow(turn({ status: "aborted" }))[0]).toContain("aborted");
-    expect(formatTurnRow(turn({ status: "compacted" }))[0]).toContain("compacted");
+    expect(formatTurnRow(fullLayout, turn({ status: "aborted" }))[0]).toContain("aborted");
+    expect(formatTurnRow(fullLayout, turn({ status: "compacted" }))[0]).toContain("compacted");
   });
 
   it("adds a tool breakdown line only when tools were called", () => {
-    expect(formatTurnRow(turn())).toHaveLength(1);
+    expect(formatTurnRow(fullLayout, turn())).toHaveLength(1);
 
-    const lines = formatTurnRow(turn({ toolCalls: { exec: 3, "github.search": 1 } }));
+    const lines = formatTurnRow(fullLayout, turn({ toolCalls: { exec: 3, "github.search": 1 } }));
 
     expect(lines).toHaveLength(2);
     expect(lines[1]).toContain("exec=3");
@@ -134,7 +269,7 @@ describe("formatTurnRow", () => {
   });
 
   it("shows a dash for absent optional values instead of leaving a gap", () => {
-    const [row = ""] = formatTurnRow(turn({ promptPreview: "", model: "", reasoningEffort: "" }));
+    const [row = ""] = formatTurnRow(fullLayout, turn({ promptPreview: "", model: "", reasoningEffort: "" }));
 
     expect(row).toContain("-");
     expect(row).not.toContain("undefined");
@@ -142,6 +277,7 @@ describe("formatTurnRow", () => {
 
   it("renders duration in seconds and rate limits as percentages", () => {
     const [row = ""] = formatTurnRow(
+      fullLayout,
       turn({ durationMs: 17_691, rateLimits: { primaryUsedPercent: 73 } }),
     );
 
@@ -150,41 +286,41 @@ describe("formatTurnRow", () => {
   });
 
   it("truncates an over-long model name rather than breaking the column layout", () => {
-    const [row = ""] = formatTurnRow(turn({ model: "a-very-long-model-identifier-indeed" }));
+    const [row = ""] = formatTurnRow(fullLayout, turn({ model: "a-very-long-model-identifier-indeed" }));
 
     expect(row).toContain("...");
     expect(row).not.toContain("a-very-long-model-identifier-indeed");
   });
 
   it("falls back to a dash when the timestamp cannot be parsed", () => {
-    expect(formatTurnRow(turn({ at: "not a date" }))[0]).toContain("-");
+    expect(formatTurnRow(fullLayout, turn({ at: "not a date" }))[0]).toContain("-");
   });
 
   it("keeps a row on a single line", () => {
-    expect(formatTurnRow(turn())[0]).not.toContain("\n");
+    expect(formatTurnRow(fullLayout, turn())[0]).not.toContain("\n");
   });
 });
 
 describe("cost column", () => {
   it("shows the cost of the turn", () => {
-    const [row] = formatTurnRow(turn({ costUsd: 0.038_044 }));
+    const [row] = formatTurnRow(fullLayout, turn({ costUsd: 0.038_044 }));
     expect(row).toContain("$0.0380");
   });
 
   it("shows a dash rather than a zero when the turn could not be priced", () => {
-    const [row] = formatTurnRow(unpricedTurn());
+    const [row] = formatTurnRow(fullLayout, unpricedTurn());
     expect(row).toContain(ABSENT_CELL);
     expect(row).not.toContain("$0.0000");
   });
 
   it("labels the column in the header", () => {
-    const [header] = formatTableHeader();
+    const [header] = formatTableHeader(fullLayout);
     expect(header).toContain("Cost");
   });
 
   it("keeps the header and a row the same width", () => {
-    const [header] = formatTableHeader({ primaryWindowMinutes: 10_080 });
-    const [row] = formatTurnRow(turn({ rateLimits: { primaryWindowMinutes: 10_080 } }));
+    const [header] = formatTableHeader(fullLayout, { primaryWindowMinutes: 10_080 });
+    const [row] = formatTurnRow(fullLayout, turn({ rateLimits: { primaryWindowMinutes: 10_080 } }));
     expect(row?.length).toBe(header?.length);
   });
 });

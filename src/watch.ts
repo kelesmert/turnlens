@@ -2,8 +2,9 @@ import { appendTurn, openCsv, turnRowKey } from "./core/store/csv.js";
 import { byteLength, followLines, readCompleteLines } from "./core/tail.js";
 import { TurnAssembler } from "./core/turn-assembler.js";
 import { computeTurnCost } from "./pricing/cost.js";
-import { formatTableHeader, formatTurnRow } from "./ui/live-table.js";
+import { formatTableHeader, formatTurnRow, selectLayout } from "./ui/live-table.js";
 import type { AssembledTurn } from "./core/turn-assembler.js";
+import type { Layout } from "./ui/live-table.js";
 import type { NormalizedTurn, ProviderAdapter, SessionRef, TokenUsage } from "./core/types.js";
 import type { PricingResolver } from "./pricing/types.js";
 
@@ -16,6 +17,12 @@ export interface WatchOptions {
   readonly pricing: PricingResolver;
   readonly signal?: AbortSignal;
   readonly write?: (line: string) => void;
+}
+
+/** Where rows go, and the layout the header committed them to. */
+interface TableOutput {
+  readonly write: (line: string) => void;
+  readonly layout: Layout;
 }
 
 /** Mutable per-run state: the assembler plus what the CSV already holds. */
@@ -70,7 +77,8 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   const baseline = await readBaseline(options, startByte);
   const recorder = await createRecorder(options, baseline === undefined ? {} : { baseline });
 
-  for (const line of formatTableHeader()) write(line);
+  const layout = selectLayout(undefined);
+  for (const line of formatTableHeader(layout)) write(line);
 
   // Awaited: followLines opens the file and captures its rewrite anchor eagerly,
   // so the window between measuring startByte and reading from it stays closed.
@@ -79,7 +87,7 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   });
 
   for await (const line of lines) {
-    await consumeLine(line, options, recorder, write);
+    await consumeLine(line, options, recorder, { write, layout });
   }
 }
 
@@ -125,12 +133,18 @@ async function readBaseline(
   return latest;
 }
 
-/** Feeds one raw line through the adapter and records any turn it closes. */
+/**
+ * Feeds one raw line through the adapter and records any turn it closes.
+ *
+ * `output` is absent when there is nothing to print to, as in `importHistory`.
+ * The writer and the layout travel together because neither is usable without
+ * the other: a row printed under a layout the header never saw is misaligned.
+ */
 async function consumeLine(
   line: string,
   options: WatchOptions,
   recorder: Recorder,
-  write?: (line: string) => void,
+  output?: TableOutput,
 ): Promise<number> {
   const record = parseJson(line);
   if (record === undefined) return 0;
@@ -150,7 +164,9 @@ async function consumeLine(
 
     await appendTurn(options.csvPath, turn);
     recorded += 1;
-    if (write !== undefined) for (const row of formatTurnRow(turn)) write(row);
+    if (output !== undefined) {
+      for (const row of formatTurnRow(output.layout, turn)) output.write(row);
+    }
   }
 
   return recorded;
