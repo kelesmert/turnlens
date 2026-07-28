@@ -1,10 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { toFiniteFloat, toFiniteInt } from "../core/numbers.js";
 import { CSV_HEADER, parseCsvRow } from "../core/store/csv.js";
+import { wrapWords } from "../core/text.js";
 
-const RULE_WIDTH = 72;
 const LABEL_WIDTH = 24;
 const ABSENT = "-";
+
+/**
+ * One column of the terminal is left unused, for the reason the table leaves
+ * one: a line filling the last column is recorded as continuing into the next,
+ * and widening the window afterwards re-flows the two together.
+ */
+const RULE_RESERVE = 1;
 
 interface Totals {
   inputUncached: number;
@@ -23,7 +30,13 @@ interface Totals {
  * be are counted separately rather than folded in as free, because a zero and
  * an unknown are different facts and only one of them belongs in a sum.
  */
-export async function summariseCsv(path: string): Promise<readonly string[]> {
+export async function summariseCsv(
+  path: string,
+  availableWidth?: number,
+): Promise<readonly string[]> {
+  const ceiling =
+    availableWidth === undefined ? Number.POSITIVE_INFINITY : availableWidth - RULE_RESERVE;
+
   let contents: string;
   try {
     contents = await readFile(path, "utf8");
@@ -31,9 +44,8 @@ export async function summariseCsv(path: string): Promise<readonly string[]> {
     return ["", "Session summary unavailable: the CSV could not be read.", ""];
   }
 
-  const rule = "=".repeat(RULE_WIDTH);
   const rows = contents.split("\n").filter((row) => row.trim() !== "").slice(1);
-  if (rows.length === 0) return ["", "Session summary", rule, "No recorded turns.", rule];
+  if (rows.length === 0) return boxed(["No recorded turns."], ceiling);
 
   const totals: Totals = {
     inputUncached: 0,
@@ -89,9 +101,6 @@ export async function summariseCsv(path: string): Promise<readonly string[]> {
   const cacheRatio = totalInput === 0 ? 0 : (totals.cacheRead / totalInput) * 100;
 
   const lines = [
-    "",
-    "Session summary",
-    rule,
     entry("Recorded turns", formatCount(rows.length)),
     entry("Aborted turns", formatCount(aborted)),
     entry("Uncached input tokens", formatCount(totals.inputUncached)),
@@ -114,13 +123,43 @@ export async function summariseCsv(path: string): Promise<readonly string[]> {
   if (models.size > 0) lines.push(entry("Models", describe(models)));
   if (efforts.size > 0) lines.push(entry("Reasoning efforts", describe(efforts)));
   if (tools.size > 0) lines.push(entry("Tool breakdown", describe(tools)));
-  lines.push(rule);
 
-  return lines;
+  return boxed(lines, ceiling);
 }
 
 function entry(label: string, value: string): string {
   return `${label.padEnd(LABEL_WIDTH)}: ${value}`;
+}
+
+/**
+ * Wraps the entries, then draws the rule around what they came to.
+ *
+ * The rule used to be a fixed 72 while a tool breakdown measured 106, so the
+ * block drew a box its own contents broke out of -- the same defect the startup
+ * banner had, at the other end of the run and on the last line the user sees.
+ *
+ * Continuation lines are indented under the value rather than the label, so a
+ * wrapped breakdown still reads as one entry.
+ */
+function boxed(entries: readonly string[], ceiling: number): readonly string[] {
+  const indent = " ".repeat(LABEL_WIDTH + 2);
+  const body = entries.flatMap((line) => {
+    if (line.length <= ceiling) return [line];
+
+    // Only the value is wrapped, to the room left beside the indent the
+    // continuation lines carry. Wrapping the whole line instead would size
+    // every part to the full width and then push the indented ones past it.
+    const [head, ...parts] = wrapWords(
+      line.slice(indent.length),
+      Math.max(ceiling - indent.length, 1),
+    );
+    return [line.slice(0, indent.length) + head, ...parts.map((part) => indent + part)];
+  });
+
+  const longest = Math.max(...body.map((line) => line.length), "Session summary".length);
+  const rule = "=".repeat(Math.max(Math.min(longest, ceiling), 1));
+
+  return ["", "Session summary", rule, ...body, rule];
 }
 
 function countValue(counter: Map<string, number>, key: string): void {

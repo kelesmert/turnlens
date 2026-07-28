@@ -34,6 +34,32 @@ export function truncateEnd(text: string, width: number): string {
 }
 
 /**
+ * Breaks a line at spaces so it fits a width.
+ *
+ * Returned as lines rather than one string carrying newlines, because every
+ * caller writes a line at a time and a "line" containing a newline is what the
+ * table format is careful never to produce. A single word longer than the width
+ * is emitted whole rather than cut: these are tool names and model identifiers,
+ * and a broken one is worse than a long one.
+ */
+export function wrapWords(text: string, width: number): readonly string[] {
+  const lines: string[] = [];
+  let line = "";
+
+  for (const word of text.split(" ")) {
+    if (line === "") line = word;
+    else if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
+    else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line !== "") lines.push(line);
+
+  return lines;
+}
+
+/**
  * Splits text the way a reader sees it, not the way it is stored.
  *
  * A width is counted in UTF-16 code units, and a character need not be one of

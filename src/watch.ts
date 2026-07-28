@@ -1,4 +1,5 @@
 import { appendTurn, openCsv, turnRowKey } from "./core/store/csv.js";
+import { wrapWords } from "./core/text.js";
 import { byteLength, followLines, readCompleteLines } from "./core/tail.js";
 import { TurnAssembler } from "./core/turn-assembler.js";
 import { computeTurnCost } from "./pricing/cost.js";
@@ -152,29 +153,6 @@ function overrideCommand(platform: NodeJS.Platform): string {
     : `COLUMNS=${FULL_TABLE_WIDTH}`;
 }
 
-/**
- * Breaks a sentence at spaces so it fits the width it is describing.
- *
- * Returned as lines rather than one string with newlines in it, because the
- * caller writes a line at a time and a row that contains a newline is the thing
- * the whole table format is careful never to produce.
- */
-function wrapWords(text: string, width: number): readonly string[] {
-  const lines: string[] = [];
-  let line = "";
-
-  for (const word of text.split(" ")) {
-    if (line === "") line = word;
-    else if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
-    else {
-      lines.push(line);
-      line = word;
-    }
-  }
-  if (line !== "") lines.push(line);
-
-  return lines;
-}
 
 async function createRecorder(
   options: WatchOptions,

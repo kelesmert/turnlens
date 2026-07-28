@@ -150,3 +150,62 @@ describe("summariseCsv reports cost", () => {
     expect(text).toContain("Estimated cost          : unavailable");
   });
 });
+
+describe("summary block width", () => {
+  /**
+   * The same defect the startup banner had, at the other end of the run: the
+   * rule was a fixed 72 while a tool breakdown measured 106, so the block drew
+   * a box its own contents broke out of. This is the last line the user sees.
+   */
+  it("draws its rule around its own longest line", async () => {
+    const csvPath = await tempCsv();
+    await openCsv(csvPath);
+    await appendTurn(csvPath, turn({ toolCalls: manyTools() }));
+
+    const lines = await summariseCsv(csvPath);
+    const longest = Math.max(...lines.map((line) => line.length));
+
+    for (const rule of lines.filter((line) => /^=+$/u.test(line))) {
+      expect(rule).toHaveLength(longest);
+    }
+  });
+
+  it("keeps every line inside the terminal it is printed into", async () => {
+    const csvPath = await tempCsv();
+    await openCsv(csvPath);
+    await appendTurn(csvPath, turn({ toolCalls: manyTools() }));
+
+    for (const width of [60, 80, 120]) {
+      for (const line of await summariseCsv(csvPath, width)) {
+        expect(line.length).toBeLessThanOrEqual(width - 1);
+      }
+    }
+  });
+
+  /** Wrapping may move a name to the next line; it may never lose one. */
+  it("still reports every tool once the breakdown is wrapped", async () => {
+    const csvPath = await tempCsv();
+    await openCsv(csvPath);
+    await appendTurn(csvPath, turn({ toolCalls: manyTools() }));
+
+    const text = (await summariseCsv(csvPath, 80)).join("\n");
+
+    for (const name of Object.keys(manyTools())) expect(text).toContain(name);
+  });
+});
+
+/** Enough tool names that the breakdown outgrows any fixed rule. */
+function manyTools(): Record<string, number> {
+  return {
+    Bash: 46,
+    Edit: 33,
+    TaskUpdate: 17,
+    Read: 12,
+    TaskCreate: 11,
+    WebSearch: 4,
+    AskUserQuestion: 3,
+    Write: 3,
+    Skill: 2,
+    ToolSearch: 1,
+  };
+}

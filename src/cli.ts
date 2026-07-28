@@ -135,7 +135,7 @@ async function main(): Promise<void> {
       signal: controller.signal,
     });
   } finally {
-    write(await summariseCsv(csvPath));
+    write(await summariseCsv(csvPath, terminalWidth(process.stdout)));
     await lock.release();
   }
 }
