@@ -14,8 +14,8 @@ export function collapseWhitespace(value: unknown): string {
 export function truncate(text: string, width: number): string {
   if (width <= 0) return "";
   if (text.length <= width) return text;
-  if (width <= 3) return text.slice(0, width);
-  return `${text.slice(0, width - 3)}...`;
+  if (width <= 3) return headFitting(text, width);
+  return `${headFitting(text, width - 3)}...`;
 }
 
 /**
@@ -29,8 +29,50 @@ export function truncate(text: string, width: number): string {
 export function truncateEnd(text: string, width: number): string {
   if (width <= 0) return "";
   if (text.length <= width) return text;
-  if (width <= 3) return text.slice(text.length - width);
-  return `...${text.slice(text.length - (width - 3))}`;
+  if (width <= 3) return tailFitting(text, width);
+  return `...${tailFitting(text, width - 3)}`;
+}
+
+/**
+ * Splits text the way a reader sees it, not the way it is stored.
+ *
+ * A width is counted in UTF-16 code units, and a character need not be one of
+ * them: an emoji is two, a family emoji is eight, and a letter carrying a
+ * combining accent is two. Cutting at an arbitrary count lands between the
+ * halves of one character, and the half that survives is not a character at
+ * all -- terminals draw a replacement glyph, and with previews enabled the
+ * broken half reaches the CSV.
+ *
+ * So the cut moves to the nearest boundary below the budget. The result can
+ * therefore be shorter than the width asked for, which is the correct trade:
+ * the column has a character of slack, rather than a character of rubble.
+ *
+ * `Intl.Segmenter` is built into Node and implements the Unicode boundary
+ * rules, so no dependency is added and no table is maintained here.
+ */
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** The longest whole-character prefix that fits the budget. */
+function headFitting(text: string, budget: number): string {
+  let taken = 0;
+  for (const { segment } of GRAPHEMES.segment(text)) {
+    if (taken + segment.length > budget) break;
+    taken += segment.length;
+  }
+  return text.slice(0, taken);
+}
+
+/** The longest whole-character suffix that fits the budget. */
+function tailFitting(text: string, budget: number): string {
+  const segments = [...GRAPHEMES.segment(text)];
+
+  let taken = 0;
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    const length = segments[index]?.segment.length ?? 0;
+    if (taken + length > budget) break;
+    taken += length;
+  }
+  return text.slice(text.length - taken);
 }
 
 /**

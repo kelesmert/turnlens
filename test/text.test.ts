@@ -27,6 +27,32 @@ describe("truncate", () => {
     expect(truncate("abcdefgh", 3)).toBe("abc");
     expect(truncate("abcdefgh", 0)).toBe("");
   });
+
+  /**
+   * A width is counted in UTF-16 code units, and an emoji is two of them, so
+   * cutting at an arbitrary count can land between the halves of one character.
+   * The half that survives is not a character at all: terminals draw it as a
+   * replacement glyph, and with previews enabled it is written to the CSV.
+   */
+  it("never cuts a character in half", () => {
+    expect(truncate("😀😀", 3)).toBe("😀");
+    expect(truncate("😀😀", 1)).toBe("");
+
+    for (let width = 0; width <= 12; width += 1) {
+      for (const text of ["😀😀😀😀", "a😀b😀c", "👨‍👩‍👧 aile", "éclair"]) {
+        expect(truncate(text, width)).not.toMatch(/[\uD800-\uDBFF]$/u);
+        expect(truncate(text, width).length).toBeLessThanOrEqual(width);
+      }
+    }
+  });
+
+  it("keeps a combining mark with the letter it belongs to", () => {
+    // "e" + combining acute: two code units, one character on screen. The
+    // pair has to move together, so a budget that fits only one of them fits
+    // neither.
+    expect(truncate("éabcdefg", 6)).toBe("éa...");
+    expect(truncate("éabcdefg", 4)).toBe("...");
+  });
 });
 
 describe("makePromptPreview", () => {
@@ -65,5 +91,15 @@ describe("truncateEnd", () => {
 
   it("returns nothing for a width of zero or less", () => {
     expect(truncateEnd("anything", 0)).toBe("");
+  });
+
+  /** The same defect as `truncate`, at the other end: a cut can orphan a half. */
+  it("never cuts a character in half", () => {
+    for (let width = 0; width <= 12; width += 1) {
+      for (const text of ["😀😀😀😀", "a😀b😀c", "aile 👨‍👩‍👧", "éclair"]) {
+        expect(truncateEnd(text, width)).not.toMatch(/^[\uDC00-\uDFFF]/u);
+        expect(truncateEnd(text, width).length).toBeLessThanOrEqual(width);
+      }
+    }
   });
 });
