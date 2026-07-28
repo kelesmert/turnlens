@@ -7,6 +7,7 @@ import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
 import { PROVIDER_IDS, getAdapter } from "./providers/registry.js";
 import { formatSessionListing } from "./ui/live-table.js";
+import { terminalWidth } from "./ui/terminal.js";
 import { confirmYesNo } from "./ui/prompts.js";
 import { summariseCsv } from "./ui/summary.js";
 import { runWatch } from "./watch.js";
@@ -139,7 +140,7 @@ async function main(): Promise<void> {
 }
 
 async function selectSession(sessions: readonly SessionRef[]): Promise<SessionRef> {
-  write(formatSessionListing(sessions));
+  write(formatSessionListing(sessions, terminalWidth(process.stdout)));
 
   const readline = createInterface({ input: process.stdin, output: process.stdout });
   let answer: string;

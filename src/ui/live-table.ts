@@ -365,18 +365,9 @@ function fit(value: string, column: Column): string {
     : clipped.padEnd(column.width);
 }
 
-/**
- * Width of the session listing, and of the rule drawn above it.
- *
- * The columns below add up to exactly this. They used to add up to more: the
- * rule was 100 characters and a row was 106 for Claude Code and 145 for Codex,
- * whose session id carries a date path. Any terminal narrower than the row
- * wrapped it, and a wrapped row reads as corruption rather than as a long line.
- */
-export const SESSION_LISTING_WIDTH = 100;
-
 const INDEX_WIDTH = 3;
 const WHEN_WIDTH = 19;
+const LISTING_GAP = "  ";
 
 /**
  * The name gives up six characters so the id can keep a whole uuid.
@@ -389,6 +380,32 @@ const WHEN_WIDTH = 19;
 const SESSION_NAME_WIDTH = 33;
 const SESSION_ID_WIDTH = 39;
 
+/** Still enough of a name to recognise a session by. Matches the table's floor. */
+const SESSION_NAME_MIN_WIDTH = 12;
+
+/**
+ * Width of the full session listing, and of the rule drawn above it.
+ *
+ * Derived, for the reason `FULL_TABLE_WIDTH` is. The columns used to add up to
+ * more than the rule: it was 100 characters while a row was 106 for Claude Code
+ * and 145 for Codex, whose session id carries a date path. Any terminal
+ * narrower than the row wrapped it, and a wrapped row reads as corruption
+ * rather than as a long line. That was fixed by making the columns add up to
+ * 100; what stayed broken is that 100 itself was never compared against a
+ * terminal, and two of the three platforms open theirs at 80.
+ */
+export const SESSION_LISTING_WIDTH =
+  INDEX_WIDTH + WHEN_WIDTH + SESSION_NAME_WIDTH + SESSION_ID_WIDTH + LISTING_GAP.length * 3;
+
+/**
+ * The narrowest listing that still holds a number, a name and an id.
+ *
+ * The date is gone and the name is at its floor, so there is nothing left to
+ * give. No terminal opens this narrow; it exists so the arithmetic has an end.
+ */
+export const MINIMUM_SESSION_LISTING_WIDTH =
+  INDEX_WIDTH + SESSION_NAME_MIN_WIDTH + SESSION_ID_WIDTH + LISTING_GAP.length * 2;
+
 /**
  * Renders the numbered session list the user chooses from.
  *
@@ -398,16 +415,56 @@ const SESSION_ID_WIDTH = 39;
  * the column beside it. The full id stays available in the startup banner and in
  * the CSV filename; nothing here is the only copy.
  */
-export function formatSessionListing(sessions: readonly SessionRef[]): readonly string[] {
+export function formatSessionListing(
+  sessions: readonly SessionRef[],
+  availableWidth?: number,
+): readonly string[] {
+  const shape = describeListing(availableWidth);
+
   const rows = sessions.map((session, index) => {
     const when = new Date(session.lastActivityMs).toISOString().slice(0, 19).replace("T", " ");
-    return [
+    const cells = [
       String(index + 1).padStart(INDEX_WIDTH),
-      when.padEnd(WHEN_WIDTH),
-      truncate(session.sessionName, SESSION_NAME_WIDTH).padEnd(SESSION_NAME_WIDTH),
+      ...(shape.showWhen ? [when.padEnd(WHEN_WIDTH)] : []),
+      truncate(session.sessionName, shape.nameWidth).padEnd(shape.nameWidth),
       truncateEnd(session.sessionId, SESSION_ID_WIDTH),
-    ].join("  ");
+    ];
+    return cells.join(LISTING_GAP);
   });
 
-  return ["", "Available sessions, most recent first", "=".repeat(SESSION_LISTING_WIDTH), ...rows];
+  return ["", "Available sessions, most recent first", "=".repeat(shape.width), ...rows];
+}
+
+/**
+ * Chooses which listing columns a terminal of the given width can hold.
+ *
+ * The date is the only column that can go. The number is what the user types in
+ * answer to the prompt below the list, the name is how a session is recognised,
+ * and the id is what matches a CSV filename -- take any of the three away and
+ * the list stops being usable for choosing. Recency survives losing the date,
+ * because the heading above already says the list is most recent first.
+ *
+ * An absent width means no terminal, and the full listing is printed for the
+ * same reason the full table is.
+ */
+function describeListing(availableWidth: number | undefined): {
+  readonly showWhen: boolean;
+  readonly nameWidth: number;
+  readonly width: number;
+} {
+  const usable =
+    availableWidth === undefined
+      ? SESSION_LISTING_WIDTH
+      : availableWidth - LAST_COLUMN_RESERVE;
+
+  const showWhen = usable >= SESSION_LISTING_WIDTH;
+  const fixed = INDEX_WIDTH + SESSION_ID_WIDTH + (showWhen ? WHEN_WIDTH : 0);
+  const gaps = LISTING_GAP.length * (showWhen ? 3 : 2);
+
+  const nameWidth = Math.min(
+    Math.max(usable - fixed - gaps, SESSION_NAME_MIN_WIDTH),
+    SESSION_NAME_WIDTH,
+  );
+
+  return { showWhen, nameWidth, width: fixed + gaps + nameWidth };
 }

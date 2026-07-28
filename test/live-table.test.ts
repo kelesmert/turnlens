@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FULL_TABLE_WIDTH,
+  MINIMUM_SESSION_LISTING_WIDTH,
   MINIMUM_TABLE_WIDTH,
   SESSION_LISTING_WIDTH,
   formatSessionListing,
@@ -370,6 +371,51 @@ describe("formatSessionListing", () => {
     ]);
 
     for (const line of lines) expect(line.length).toBeLessThanOrEqual(SESSION_LISTING_WIDTH);
+  });
+
+  /**
+   * The listing is the first thing TurnLens prints and the user has to read it
+   * to type a number, so a wrapped row costs more here than in the table. The
+   * date is the only column that can go: the heading already says the list is
+   * most recent first, so recency survives its removal.
+   */
+  it("drops the date rather than wrap in a terminal that opens at eighty", () => {
+    const lines = formatSessionListing([session(codexId, "Hesapla 7x7")], 80);
+
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(79);
+    expect(lines.at(-1)).not.toContain("2026-07-28 00:22:51");
+  });
+
+  /**
+   * What the user needs to choose with: the number they type, the name they
+   * recognise, and the id that matches a CSV filename.
+   */
+  it("never gives up the number, the name or the id", () => {
+    for (const width of [60, 70, 80, 90, 100]) {
+      const lines = formatSessionListing([session(claudeId, "Hesapla 7x7")], width);
+      const row = lines.at(-1) ?? "";
+
+      expect(row).toMatch(/^\s*1\s/u);
+      expect(row).toContain("Hesapla 7x7");
+      expect(row).toContain(claudeId);
+    }
+  });
+
+  it("keeps every line one short of the terminal, for the reason the table does", () => {
+    for (let width = 58; width <= 140; width += 1) {
+      const lines = formatSessionListing([session(codexId, "Hesapla 7x7")], width);
+
+      for (const line of lines) {
+        expect(line.length).toBeLessThanOrEqual(Math.max(width - 1, MINIMUM_SESSION_LISTING_WIDTH));
+      }
+    }
+  });
+
+  it("prints the full listing when there is no terminal to fit", () => {
+    const lines = formatSessionListing([session(claudeId, "Hesapla 7x7")], undefined);
+
+    expect(lines.at(-1)).toContain("2026-07-28 00:22:51");
+    expect(lines[2]).toHaveLength(SESSION_LISTING_WIDTH);
   });
 
   it("numbers the rows from one, because that is what the user types", () => {
