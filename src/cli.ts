@@ -6,6 +6,7 @@ import { chooseSession, describeMissingSessions, parseCliOptions } from "./optio
 import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
 import { PROVIDER_IDS, getAdapter } from "./providers/registry.js";
+import { formatSessionBanner } from "./ui/banner.js";
 import { formatSessionListing } from "./ui/live-table.js";
 import { terminalWidth } from "./ui/terminal.js";
 import { confirmYesNo } from "./ui/prompts.js";
@@ -14,7 +15,6 @@ import { runWatch } from "./watch.js";
 import type { SessionRef } from "./core/types.js";
 
 const SESSION_LIST_LIMIT = 25;
-const RULE_WIDTH = 100;
 
 const HELP = [
   "turnlens - per-turn token monitoring for AI coding agents",
@@ -111,18 +111,19 @@ async function main(): Promise<void> {
     process.once(signal, () => controller.abort());
   }
 
-  write([
-    "",
-    "=".repeat(RULE_WIDTH),
-    `Session name    : ${selected.sessionName}`,
-    `Session file    : ${selected.path}`,
-    `CSV file        : ${csvPath}`,
-    `Prompt previews : ${includePromptPreview ? "enabled" : "disabled"}`,
-    `Pricing         : ${pricing.version}${offline ? " (offline)" : ""}`,
-    "Stop monitoring : Ctrl+C",
-    "=".repeat(RULE_WIDTH),
-    "",
-  ]);
+  write(
+    formatSessionBanner(
+      {
+        sessionName: selected.sessionName,
+        sessionPath: selected.path,
+        csvPath,
+        promptPreviews: includePromptPreview,
+        pricing: pricing.version,
+        offline,
+      },
+      terminalWidth(process.stdout),
+    ),
+  );
 
   try {
     await runWatch({
