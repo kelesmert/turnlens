@@ -183,8 +183,10 @@ describe("selectLayout", () => {
     }
   });
 
+  // 18 rather than 19 because one column of the terminal is left unused; see
+  // "never fills the last column of the terminal" below.
   it("returns leftover space to the prompt before the model", () => {
-    expect(widthOf(120, "prompt")).toBe(19);
+    expect(widthOf(120, "prompt")).toBe(18);
     expect(widthOf(120, "model")).toBe(12);
   });
 
@@ -197,6 +199,21 @@ describe("selectLayout", () => {
       const [header = ""] = formatTableHeader(selectLayout(width));
 
       expect(header.length).toBeLessThanOrEqual(Math.max(width, MINIMUM_TABLE_WIDTH));
+    }
+  });
+
+  /**
+   * A line that fills the last column leaves the cursor at the right margin,
+   * and terminals record that line as continuing into the next one. Widening
+   * the window afterwards re-flows the two together, which is how a rule was
+   * seen running past the last column it belongs to. One spare character costs
+   * nothing and removes the whole class.
+   */
+  it("never fills the last column of the terminal", () => {
+    for (let width = 60; width <= 200; width += 1) {
+      const [header = ""] = formatTableHeader(selectLayout(width));
+
+      expect(header.length).toBeLessThanOrEqual(Math.max(width - 1, MINIMUM_TABLE_WIDTH));
     }
   });
 

@@ -119,7 +119,11 @@ export async function runWatch(options: WatchOptions): Promise<void> {
  * went, and the answer needs three parts: the width there is, the width it
  * would take, and what to do about it.
  */
-export function describeNarrowing(layout: Layout, width: number | undefined): readonly string[] {
+export function describeNarrowing(
+  layout: Layout,
+  width: number | undefined,
+  platform: NodeJS.Platform = process.platform,
+): readonly string[] {
   const total = selectLayout(undefined).columns.length;
   if (width === undefined || layout.columns.length === total) return [];
 
@@ -128,9 +132,24 @@ export function describeNarrowing(layout: Layout, width: number | undefined): re
 
   const text =
     `Terminal is ${width} columns wide; ${FULL_TABLE_WIDTH} are needed for all ${total} ` +
-    `columns. Showing ${layout.columns.length} -- widen the window or set COLUMNS.${wrapping}`;
+    `columns. Showing ${layout.columns.length}. Widen the window, or force every ` +
+    `column with ${overrideCommand(platform)} -- which will wrap until the window ` +
+    `is wide enough.${wrapping}`;
 
-  return wrapWords(text, Math.max(width, MINIMUM_TABLE_WIDTH));
+  return wrapWords(text, Math.max(width - 1, MINIMUM_TABLE_WIDTH));
+}
+
+/**
+ * The `COLUMNS` override, written the way the reader's own shell accepts it.
+ *
+ * Advice in the wrong syntax is not advice. PowerShell rejects a leading
+ * `NAME=value`, and a POSIX shell has no idea what `$env:` means, so printing
+ * one form to everybody leaves half the users with a command that errors.
+ */
+function overrideCommand(platform: NodeJS.Platform): string {
+  return platform === "win32"
+    ? `$env:COLUMNS=${FULL_TABLE_WIDTH}`
+    : `COLUMNS=${FULL_TABLE_WIDTH}`;
 }
 
 /**

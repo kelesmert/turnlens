@@ -17,6 +17,20 @@ const PREVIEW_MIN_WIDTH = 12;
 const MODEL_MIN_WIDTH = 12;
 
 /**
+ * One column of the terminal is never used, and the reason is not aesthetic.
+ *
+ * A line that fills the last column leaves the cursor at the right margin, and
+ * terminals record such a line as continuing into the next one. Widening the
+ * window afterwards re-flows the pair together: a rule printed at exactly the
+ * terminal width was seen running past the last column it belonged to, on
+ * Windows, after the window was maximised. Fitting one character short means no
+ * line is ever a continuation, whatever the terminal believes about margins. It
+ * also absorbs the terminals and remote sessions that report their width off by
+ * one.
+ */
+const LAST_COLUMN_RESERVE = 1;
+
+/**
  * Names the columns so a value can be paired with its heading by identity.
  *
  * The pairing used to be positional, which held only while every column was
@@ -210,9 +224,10 @@ export const MINIMUM_TABLE_WIDTH = renderedWidth(
  */
 export function selectLayout(availableWidth: number | undefined): Layout {
   const all = describeColumns();
-  if (availableWidth === undefined || availableWidth >= FULL_TABLE_WIDTH) {
-    return { columns: all, width: FULL_TABLE_WIDTH };
-  }
+  if (availableWidth === undefined) return { columns: all, width: FULL_TABLE_WIDTH };
+
+  const usable = availableWidth - LAST_COLUMN_RESERVE;
+  if (usable >= FULL_TABLE_WIDTH) return { columns: all, width: FULL_TABLE_WIDTH };
 
   const droppable = all
     .filter((column) => column.dropPriority !== undefined)
@@ -220,11 +235,11 @@ export function selectLayout(availableWidth: number | undefined): Layout {
 
   let kept = all.map(shrunk);
   for (const victim of droppable) {
-    if (renderedWidth(kept) <= availableWidth) break;
+    if (renderedWidth(kept) <= usable) break;
     kept = kept.filter((column) => column.id !== victim.id);
   }
 
-  const grown = grow(kept, all, availableWidth);
+  const grown = grow(kept, all, usable);
   return { columns: grown, width: renderedWidth(grown) };
 }
 

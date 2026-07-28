@@ -244,6 +244,20 @@ describe("describeNarrowing", () => {
     expect(notice).toContain("COLUMNS");
   });
 
+  /**
+   * The advice is only usable if it is the syntax the reader's shell accepts.
+   * PowerShell does not understand a leading `NAME=value`, and a POSIX shell
+   * does not understand `$env:`.
+   */
+  it("spells the override the way the user's own shell spells it", () => {
+    const windows = describeNarrowing(selectLayout(120), 120, "win32").join(" ");
+    const posix = describeNarrowing(selectLayout(120), 120, "linux").join(" ");
+
+    expect(windows).toContain(`$env:COLUMNS=${FULL_TABLE_WIDTH}`);
+    expect(posix).toContain(`COLUMNS=${FULL_TABLE_WIDTH}`);
+    expect(posix).not.toContain("$env:");
+  });
+
   it("warns that rows will wrap when even the narrowest table will not fit", () => {
     const tooNarrow = MINIMUM_TABLE_WIDTH - 1;
     const notice = describeNarrowing(selectLayout(tooNarrow), tooNarrow).join(" ");
