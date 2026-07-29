@@ -6,19 +6,24 @@ dist/
 # ~/.turnlens/, so this is the only path the tool writes inside a project.
 turnlens-usage/
 
-# Development material. The published repository is the tool: source, tests and
-# the README. Everything below is how it got built, and stays on the machine it
-# was built on.
+# docs/ is committed. It is how the tool is reasoned about, and an agent asked to
+# change the code is pointed at it, so it has to exist for whoever holds the
+# repository. Git also dates every document for free, which is why no document
+# carries a hand-written "last updated" line.
 #
-# docs/ is ignored as a directory rather than by listing what is in it, so a
-# document written tomorrow is private by default and nobody has to remember a
-# rule. .local/ is the same idea for files that are not documents and have no
-# other obvious home.
-docs/
-documentation/
+# Three directories under docs/ stay behind. superpowers/ is design scaffolding
+# for work in progress, work-notes/ is thinking rather than a document, and
+# archive/ holds a superseded implementation kept for reference. None of them is
+# something a reader of the repository needs. .local/ is for files that are not
+# documents and have no other obvious home.
+docs/superpowers/
+docs/work-notes/
+docs/archive/
 .local/
 
-# Instructions and configuration for the agent used to develop this. CLAUDE.md
-# is ignored where it sits because Claude Code reads it from the repository root.
-CLAUDE.md
-.claude/
+# Instructions for the agent used to develop this are committed: AGENTS.md holds
+# them, and CLAUDE.md is a symlink to it, because Claude Code reads that name
+# while other agents read the first. `.claude/` is committed for the same reason
+# -- it is written by hand. Only the permissions file Claude Code writes for
+# itself stays on the machine it was written on.
+.claude/settings.local.json
