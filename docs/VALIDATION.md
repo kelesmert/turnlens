@@ -224,10 +224,17 @@ the same machine, with more of them present:
 
 | Measured | Figure |
 | --- | --- |
+| Transcripts under `~/.claude/projects/` | 18 |
 | `local_<client-id>.json` records | 9 |
 | of those, `isArchived: true` | 1 |
 | `deleted_<uuid>` entries | 8 |
 | of those, whose transcript is still on disk | 4 |
+
+**Half the sessions on this machine have no desktop record of any kind.** The
+transcript is written by the CLI; the record only exists for sessions the desktop
+client opened. Anything built on that store is therefore partial by construction,
+and its default has to be *visible* -- a terminal-only user has no records at all
+and must not end up with an empty listing.
 
 Two corrections to what was recorded before.
 

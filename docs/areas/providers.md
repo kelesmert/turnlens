@@ -56,7 +56,15 @@ lists every session in it twice.
 Codex moves the transcript, so TurnLens stops listing an archived session without
 being told anything. Claude Code leaves the transcript where it is, so an archived
 conversation keeps appearing in the session list, and nothing under `~/.claude`
-marks it.
+marks it. Deleting a Claude Code session leaves the transcript too. Both are
+deliberate on TurnLens's side -- see Decisions.
+
+### Transcripts do not live forever
+
+Claude Code deletes transcripts after **30 days** by default, configurable through
+`cleanupPeriodDays` in `settings.json`. Nothing TurnLens reads is permanent, which
+bounds any claim a report can make about history. A CSV row, once written, is not
+affected: it is TurnLens's own file.
 
 ## Invariants
 
