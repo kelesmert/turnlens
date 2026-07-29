@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# `npm pack` writes the tarball into the working directory.
+*.tgz
+
 # Runtime output from the CLI. Locks and the pricing cache live under
 # ~/.turnlens/, so this is the only path the tool writes inside a project.
 turnlens-usage/

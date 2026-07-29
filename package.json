@@ -1,24 +1,48 @@
 {
   "name": "turnlens",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Per-turn token and cost monitoring for AI coding agents",
+  "keywords": [
+    "codex",
+    "claude-code",
+    "tokens",
+    "cost",
+    "usage",
+    "cli",
+    "openai",
+    "anthropic",
+    "llm",
+    "monitoring"
+  ],
   "license": "MIT",
   "author": "Mert Keles",
+  "homepage": "https://github.com/kelesmert/turnlens#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kelesmert/turnlens.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kelesmert/turnlens/issues"
+  },
   "type": "module",
   "bin": {
     "turnlens": "dist/cli.js"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "provenance": true
+  },
   "scripts": {
     "prebuild": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
+    "prepublishOnly": "npm test && npm run typecheck && npm run build",
     "pricing:snapshot": "node scripts/build-pricing-snapshot.mjs",
     "verify:costs": "node scripts/verify-costs.mjs"
   },
