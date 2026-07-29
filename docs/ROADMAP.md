@@ -648,7 +648,8 @@ cached older version.
 
 ### Carried forward
 
-- ~~**Windows and macOS support.**~~ **Windows measured, macOS still assumed.**
+- ~~**Windows and macOS support.**~~ **Both now run the suite; only macOS
+  discovery is left.**
   Development happens on Linux, so this was written as the step where the other
   two get exercised rather than assumed. Windows has now been exercised, ahead of
   this plan and independently of it -- see `VALIDATION.md`, "Windows, 27 July
@@ -673,8 +674,13 @@ cached older version.
   `resolveHome(env)`. The single resolver is now an invariant in
   `areas/providers.md`. Nothing is left to fix here.
 
-  macOS is unmeasured. It is expected to behave like Linux, and expectation is
-  recorded as expectation until a machine says otherwise.
+  **macOS has now run the suite and nothing else.** The first CI run, on 30 July
+  2026, is the first time this code has executed on macOS at all, and it passed --
+  see `VALIDATION.md`, "The suite on three platforms". What that leaves open is
+  narrower than what stood here before: not whether TurnLens works on macOS, but
+  whether it finds a session there, since no runner has either agent installed.
+  Expectation is still recorded as expectation until a real machine says
+  otherwise.
 - README covering scope, install, privacy warning for prompt previews, CSV field
   documentation, known limitations, MIT notice and the ccusage acknowledgment.
   Written already; only the install section changes once the package is up.

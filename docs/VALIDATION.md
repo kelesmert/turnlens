@@ -418,8 +418,40 @@ the source, `package.json` still declares `>=20.0.0` against the README's 22, an
 the repository has since gained three tracked symlinks that a Windows checkout
 will materialise as plain files.
 
+## The suite on three platforms, 30 July 2026
+
+The first CI run, `da9b45b`. Five jobs, all green, 58 seconds total.
+
+| Job | Duration |
+| --- | --- |
+| `ubuntu-latest` / Node 24 | 23s |
+| `ubuntu-latest` / Node 22 | 25s |
+| `ubuntu-latest` / Node 26 | 29s |
+| `macos-latest` / Node 24 | 18s |
+| `windows-latest` / Node 24 | 54s |
+
+**This is the first time the code has ever run on macOS.** Windows had been
+measured directly before, on a real machine, but never as a test suite on a clean
+runner. Both pass.
+
+Two predictions are settled by it. The Windows job was expected to be the one
+most likely to fail, on the argument that every path is composed with `join` and
+every test compares against a `join` result, so both sides of each assertion
+transform identically -- an argument, not evidence. It is evidence now, and it
+took 54 seconds against ubuntu's 23, which is ordinary for that runner rather
+than a signal. And `actions/checkout@v7` and `actions/setup-node@v7` were taken
+from the plan without local verification, since an action's current major cannot
+be checked from this machine. Both resolved.
+
+**What a green run does not say.** The suite works from fixtures and temporary
+directories, and no runner has Codex or Claude Code installed. So this says the
+suite passes on macOS. It says nothing about whether TurnLens finds a real
+transcript there -- see below, which is unchanged by this run.
+
 ## Still unmeasured
 
-**macOS.** The findings above are expected to hold, because `os.homedir()` and
-dotfile conventions match Linux more closely than Windows does. Expectation is not
-measurement, and this document will say so until it has been checked.
+**macOS session discovery.** The findings above are expected to hold, because
+`os.homedir()` and dotfile conventions match Linux more closely than Windows
+does. Expectation is not measurement, and this document will say so until a real
+macOS machine has been looked at. CI narrows this to discovery alone: the suite
+is no longer part of the question.
