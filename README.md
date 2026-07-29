@@ -18,27 +18,24 @@ finishes answering, with the tool calls it made and the tokens it burned.
 Row 2 is a turn stopped mid tool call. It gets its own row, with its own tokens
 and its own tool call — not the next one's.
 
-Supported agents: **Codex** and **Claude Code**.
+Works with **Codex** and **Claude Code**, on **Linux, macOS and Windows**.
 
 ## Install
-
-Requires Node 22 or newer. No runtime dependencies.
 
 ```bash
 npx turnlens@latest
 ```
 
-That is the whole install. `@latest` is not decoration: a bare `npx turnlens` can
-serve a copy already sitting in the local cache, so it may run an older build and
-show a bug that is already fixed.
-
-For a permanent command:
+Or for a permanent command:
 
 ```bash
 npm install -g turnlens
 ```
 
-**From source**, which is how the repository itself is developed:
+Node 22 or newer. No runtime dependencies.
+
+<details>
+<summary>From source</summary>
 
 ```bash
 git clone https://github.com/kelesmert/turnlens.git
@@ -47,6 +44,8 @@ npm install
 npm run build
 node dist/cli.js --help
 ```
+
+</details>
 
 ## Usage
 
@@ -59,6 +58,8 @@ turnlens --provider claude-code
 TurnLens lists the sessions it can find, most recently active first, and asks
 which one to watch. It then follows that session's transcript and prints a row
 each time a turn closes. Stop with Ctrl+C; a summary is printed on exit.
+
+### Options
 
 ```
   --provider <id>      Agent to monitor. One of: codex, claude-code. Default: codex
@@ -94,39 +95,16 @@ Rows are appended and never rewritten. A closed turn keeps the price that was in
 effect when it closed, and records which pricing list that was, so a rate change
 upstream never moves a number you already have.
 
+27 columns, named in the header row: timestamps and status, the model and its
+reasoning effort, every token category separately, the cost and which pricing
+list produced it, tool calls, rate-limit windows and duration.
+
+An empty cost is always explained by the `cost_status` column. TurnLens never
+records a cost of zero for a model it could not price, because a zero joins a
+spreadsheet sum and cannot be told apart from a genuinely free turn.
+
 TurnLens's own state — the pricing cache and session locks — lives under
 `~/.turnlens/`, overridable with `TURNLENS_HOME`.
-
-### CSV columns
-
-| Column | Meaning |
-|---|---|
-| `timestamp` | When the turn closed, ISO 8601 |
-| `provider` | `codex` or `claude-code` |
-| `session_id`, `session_name` | Which session this turn belongs to |
-| `turn_number` | Position in this recording, starting at 1 |
-| `turn_id` | The agent's own id for the turn, when it has one |
-| `status` | `completed`, `aborted` or `compacted` |
-| `prompt_preview` | First 20 characters of the prompt, only if you opted in |
-| `model` | The model that answered |
-| `reasoning_effort` | Reasoning effort in effect, when the agent reports one |
-| `tool_call_count`, `tool_calls_json` | How many tools ran, and which |
-| `input_uncached` | Input tokens billed at the full rate |
-| `cache_read` | Input tokens served from the prompt cache |
-| `cache_creation_5m`, `cache_creation_1h` | Cache writes, split by lifetime because they are priced differently |
-| `output_including_reasoning` | Output tokens, reasoning included |
-| `reasoning_subset` | How many of those were reasoning tokens |
-| `total_tokens` | Sum of every category above |
-| `estimated_cost_usd` | Cost in US dollars, six decimals |
-| `cost_status` | `priced`, `model_unknown` or `no_pricing_data` |
-| `pricing_version` | The pricing list this row was priced from |
-| `primary_used_percent`, `primary_window_minutes` | Rate-limit window, when the agent reports one |
-| `secondary_used_percent`, `secondary_window_minutes` | Second rate-limit window, likewise |
-| `duration_ms` | How long the turn took, when the agent reports it |
-
-An empty `estimated_cost_usd` is always explained by `cost_status`. TurnLens
-never records a cost of zero for a model it could not price: a zero would be
-indistinguishable from a free turn.
 
 ## Pricing
 
