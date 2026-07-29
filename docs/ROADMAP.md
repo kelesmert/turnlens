@@ -473,6 +473,11 @@ macOS is unmeasured, as ever. Nothing here branches on platform.
 The work is turning a repository people clone into a package people install.
 Nothing about how TurnLens runs changes; what changes is how it reaches anyone.
 
+One item joined this plan from elsewhere, because publishing is what makes it
+expensive: **a Codex session id becomes its filename rather than its path**
+(`DECISIONS.md`). No Codex CSV exists anywhere yet, so the change costs nothing
+today; after the first release it orphans other people's files.
+
 Today the only route in is `git clone`, `npm install`, `npm run build`,
 `node dist/cli.js`. That route works -- verified by cloning the public repository
 and following the README verbatim -- but it asks for git, a build step and three
@@ -840,19 +845,28 @@ Nobody has decided these. A question answered here moves to `DECISIONS.md`.
   across all history should probably include them, alongside Codex's
   `archived_sessions/`, which currently holds six sessions no total can see.
 
-  Three things to decide, and the first is a defect waiting to happen:
+  The answer is yes, and three constraints were settled with it:
 
-  1. **`sessionId` is derived from the path.** `archived_sessions/` is flat while
-     `sessions/` is nested by date, so the same transcript yields a different id
-     from each, and the CSV filename follows the id. Scanning both roots naively
-     writes a second CSV for a session watched before it was archived, and counts
-     it twice. Measured in `VALIDATION.md`.
-  2. **Whether a total says how much of it came from archived or deleted
-     sessions.** They are still real spend; hiding the composition is a different
-     choice from hiding the number.
-  3. **What it says about retention.** Claude Code deletes transcripts after 30
-     days by default, so any claim about "all history" is bounded by
-     `cleanupPeriodDays` and should say so rather than imply completeness.
+  1. **A total says what it is made of.** How many sessions were active, archived
+     and deleted, at least as counts. They are real spend and belong in the
+     number, but not silently -- the same reasoning that makes an empty listing
+     name where it searched. `ccusage`'s report layout is worth reading before
+     designing this.
+  2. **A total says the window it covers.** The oldest transcript found, and that
+     Claude Code prunes at `cleanupPeriodDays`, 30 days by default. "All history"
+     is a claim TurnLens cannot make about data it does not control. Its own CSVs
+     are not pruned, so a report that combines recorded rows with reconstructed
+     ones is combining two different coverages -- worth keeping in mind, not worth
+     designing yet.
+  3. **Reconstructed rows stay distinguishable from recorded ones.** Backfilled
+     turns are priced at today's rates, and a rate frozen when the turn closed is
+     the only thing a recorded row has that a rebuilt one does not. Either a
+     `cost_status` value or its own column; deferred until the work starts, but
+     not optional once it does.
+
+  The id defect this turned up is settled separately and lands earlier: see
+  `DECISIONS.md`, *"A Codex session id is its filename, not its path"*. It is
+  free to fix now and expensive after the first release.
 - **Is CSV still the right store once reporting reads across sessions?** Recorded
   as settled for v1 in `DECISIONS.md`; the reporting work is what would reopen it.
 - **How should rate-limit windows be presented?** Both providers record the raw

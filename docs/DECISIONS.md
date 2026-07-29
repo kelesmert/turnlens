@@ -357,6 +357,34 @@ half is data corruption rather than a display flaw, and it reached the CSV.
 
 **Status.** Deferred.
 
+### A Codex session id is its filename, not its path
+
+**Context.** `sessionId` was `relative(sessionsRoot, path)`, which for Codex
+includes the date directories: `2026/07/29/rollout-<timestamp>-<uuid>`. Claude
+Code's is already a bare uuid, from `basename(file, ".jsonl")`.
+
+**Decision.** Drop the date directories. The id is the filename without its
+extension.
+
+**Consequences.** The date path carries nothing the filename does not: the
+filename holds the full timestamp *and* the uuid. `truncateEnd` in `core/text.ts`
+exists because of exactly this -- it cuts from the front so the uuid survives,
+since "the date is already shown in its own column".
+
+It also removes a defect the reporting work would otherwise have walked into.
+`archived_sessions/` is flat while `sessions/` is nested, so one transcript
+yielded two different ids depending on which root read it, and the CSV filename
+follows the id. Scanning both would have written a second file for a session
+watched before it was archived, and counted it twice.
+
+**This is not a breaking change today and becomes one after the first release.**
+Measured before deciding: every CSV on this machine is Claude Code's, whose id is
+unaffected, and no Codex CSV has ever been written. Once the package is published
+the same change orphans other people's files, so it belongs before the release
+rather than with the reporting work that revealed it.
+
+**Status.** Accepted, not yet implemented. Supersedes the path-derived id.
+
 ### The provider segment in the CSV path buys readability, not correctness
 
 **Context.** Output lands at `turnlens-usage/<provider>/<session-id>.csv`.
