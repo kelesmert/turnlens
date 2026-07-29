@@ -7,6 +7,9 @@ update-when: A candidate is raised, implemented, or dropped.
 
 **Sections:** 1. Rate-limit windows · 2. Turn numbering on resume · 3. Advisor usage · 4. Subagent cost · 5. Session recency in words
 
+A candidate that grows past a section of its own moves to a topic document.
+`SESSION-LIFECYCLE.md` came out of here for that reason.
+
 Ideas worth building that are deliberately not built yet, with the evidence that
 motivated them. Each entry records what was observed, why it was deferred, and
 what would have to be decided before implementing it.

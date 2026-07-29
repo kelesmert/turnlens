@@ -35,6 +35,13 @@ single `ARCHITECTURE.md` expensive to keep current.
 | `VALIDATION.md` | Record | per run: What was measured · Method · Result | Appended |
 | `ROADMAP.md` | Plan | Plans · Open questions | As work moves |
 | `FUTURE.md` | Plan | per candidate: What was observed · Why deferred · Decisions to make | As candidates are raised or dropped |
+| topic documents | Plan | The question · What was measured · Why nothing is decided · Decisions to make | While the question is open |
+
+A topic document is one question, held open on purpose, with the evidence
+gathered for it in one place. `SESSION-LIFECYCLE.md` is the first. A question
+earns its own file when the measurements behind it outgrow a section of
+`FUTURE.md`; when it is answered, the answer moves to `DECISIONS.md` and the
+figures to `VALIDATION.md`, and the file goes.
 
 `areas/` follows the pipeline: `providers`, `turns`, `pricing`, `output`,
 `runtime`. Each is a stage that can be reasoned about without opening the
