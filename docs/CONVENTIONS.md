@@ -5,9 +5,22 @@ update-when: A document class is added or removed, or a rule for writing them ch
 
 # Documentation conventions
 
-**Sections:** Classes · The header every document carries · What belongs in a document · Detail has one home · Check a document against the code before editing it · How each class is updated
+**Sections:** What these documents are for · Classes · The header every document carries · What belongs in a document · Documents route, code decides · Detail has one home · Check a document against the code before editing it · How each class is updated
 
-## Classes
+## What these documents are for
+
+They are a map, not the territory. Their job is to make finding something cheap:
+where to look, what was already decided, what was already measured. **The source
+of truth is the code.**
+
+That makes them living documents rather than a fixed manual. A document changes
+in the same commit as the work it describes, not in a documentation pass
+afterwards, because a pass that is deferred is a pass that does not happen. Each
+file names the change that obliges an edit, in `update-when`, so nobody has to
+remember.
+
+A document that has not moved while the code it describes has is not stable. It
+is unverified.
 
 Five classes, split by how often they change rather than by subject. A document
 that records a measurement and a document that describes current behaviour age
@@ -65,6 +78,38 @@ quietly wrong, which is worse than absent.
 
 The same test decides borderline cases: if it can be recovered by reading the
 code, leave it to the code.
+
+## Documents route, code decides
+
+Reading a document is not the same as knowing what is true now. A record says
+what was decided and why it was decided *then*; the code says what happens
+today, and the two drift apart in one direction only.
+
+So the obligation depends on what is about to be done with the answer:
+
+| Doing this | Enough |
+| --- | --- |
+| Finding where to look | The document |
+| Learning that a choice was already made, and why | The document |
+| **Changing code** | **Open the files the area document names** |
+| **Stating what is true now** | **Open the files the area document names** |
+| **Proposing to reverse a decision, or refusing to** | **Open the files the area document names** |
+
+The last row is the one that gets skipped. A record knows why a decision was
+made; it does not know what would break today, because the code has moved since
+it was written. Answering "no, that was decided against" from the record alone
+produces the answer that was right on the day the record was written.
+
+This is not hypothetical. Asked whether a second pricing source should be added,
+a session holding this documentation cited the decision and never opened
+`pricing/`. A session without it read `types.ts`, `litellm.ts` and `resolver.ts`
+and found three things the record does not contain: the unit and shape mismatch,
+the `RawPricingEntry` contract it would break, and a rate tier the second source
+does not carry. Both refused the change. Only one of them knew what refusing was
+protecting.
+
+The **Where the code lives** section in each area document exists for this. It is
+not an index; it is the list of files to open before acting.
 
 ## Detail has one home; scope may be named anywhere
 

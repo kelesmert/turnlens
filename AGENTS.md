@@ -68,5 +68,7 @@ Read the area document before changing code in that area.
 | `docs/ROADMAP.md` | What is planned, and which questions are still open |
 | `docs/FUTURE.md` | A candidate feature and the evidence behind it |
 
-Documents are for navigation and for what the code cannot state. Read the code
-for what is true right now.
+**A document tells you where to look and what was already decided. Before
+changing code, stating what is true now, or refusing a change because it was
+decided against, open the files its "Where the code lives" section names.** A
+record knows why a decision was made; it does not know what would break today.

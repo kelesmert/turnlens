@@ -216,6 +216,40 @@ not fit the 80 that GNOME Terminal, Terminal.app and cmd.exe all open to, so it
 wrapped by default on two of the three platforms. It now survives to 92 columns
 with the date, and below that the name returns to full width.
 
+## The desktop store, re-measured 29 July 2026
+
+The earlier reading of `~/.config/Claude/claude-code-sessions/` counted five
+files and found that four of their names matched no transcript. Counted again on
+the same machine, with more of them present:
+
+| Measured | Figure |
+| --- | --- |
+| `local_<client-id>.json` records | 9 |
+| of those, `isArchived: true` | 1 |
+| `deleted_<uuid>` entries | 8 |
+| of those, whose transcript is still on disk | 4 |
+
+Two corrections to what was recorded before.
+
+**`deleted_<uuid>` entries are files, not directories.** Thirteen bytes each,
+holding a millisecond timestamp and nothing else -- `1785265698128` in the one
+opened.
+
+**Their uuid is the transcript's, not the client's.** This is the opposite of
+`local_<client-id>.json`, whose name is the client's own id and whose join key
+(`cliSessionId`) is a field inside. Four of the eight resolve directly to a file
+under `~/.claude/projects/`.
+
+So the store carries two markers with different costs. Archival needs every file
+in the tree opened and an undocumented schema read; deletion is a filename
+match. The decision not to join the first was made on the cost of the first, and
+does not carry to the second. That the four deleted sessions are still listed by
+TurnLens is a fact about today, not a defect that has been ruled on -- it is
+raised as an open question in `ROADMAP.md` rather than settled here.
+
+Measured live rather than on a frozen copy, which is acceptable because the
+question is the shape of an external store and not a figure TurnLens produces.
+
 ## Still unmeasured
 
 **macOS.** The findings above are expected to hold, because `os.homedir()` and

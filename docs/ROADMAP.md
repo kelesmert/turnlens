@@ -828,3 +828,22 @@ The related defect that did have to be fixed is recorded above: cutting a
 character in half is data corruption rather than a display flaw, and it reached
 the CSV. `truncate` and `truncateEnd` now cut on grapheme boundaries via
 `Intl.Segmenter`, which is built into Node.
+
+## Open questions
+
+Nobody has decided these. A question answered here moves to `DECISIONS.md`.
+
+- **Should a session the user deleted in the desktop client keep appearing in the
+  listing?** Measured 29 July 2026: eight `deleted_<uuid>` markers exist and four
+  of them name a transcript still on disk. Unlike the archive marker, the join is
+  a filename match rather than a schema read, so the cost that settled
+  `isArchived` does not apply here. Three things to decide before any code: whether
+  a deleted session is ended in the sense Codex's archive is, whether hiding or
+  labelling is right when the transcript is still readable, and whether a marker
+  written only by the desktop client may govern a listing that also covers
+  terminal sessions. Figures in `VALIDATION.md`.
+- **Is CSV still the right store once reporting reads across sessions?** Recorded
+  as settled for v1 in `DECISIONS.md`; the reporting work is what would reopen it.
+- **How should rate-limit windows be presented?** Both providers record the raw
+  values already. Written up in `FUTURE.md` section 1, including the four
+  decisions to make first.

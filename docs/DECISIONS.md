@@ -14,6 +14,12 @@ chain is the value, not any single record.
 `Status` is one of **Accepted**, **Deferred** or **Superseded**. Deferred means
 the choice was made deliberately and can be revisited; it does not mean forgotten.
 
+**A `Deferred` entry is not an answer to "should we do this now".** It records why
+the choice was made, on the day it was made, and the code has moved since. Before
+proposing one of these again -- or refusing it -- open the files the area document
+names under **Where the code lives**. What would break today is in the code, not
+here.
+
 ---
 
 ## Discovery
@@ -100,7 +106,17 @@ Worth recording because the answer moved twice: first "no signal exists", then "
 signal exists on Windows", then this. **Absence of a signal where one looked is
 not absence of a signal.**
 
-**Status.** Accepted for watching; open for reporting.
+**Note, 29 July 2026.** Re-measuring the same store found a second marker this
+entry did not account for. `deleted_<uuid>` entries are named after the
+*transcript's* uuid rather than the client's, so joining them needs no schema and
+no second read -- the opposite of the cost that decided this entry. Four of the
+eight point at transcripts still on disk, which TurnLens therefore lists after
+the user deleted them in the desktop client. The reasoning above still holds for
+`isArchived`; it does not carry to deletion, and that has not been decided.
+Figures in `VALIDATION.md`, question in `ROADMAP.md`.
+
+**Status.** Accepted for watching; open for reporting; the deletion marker is a
+separate question and is open.
 
 ---
 
@@ -134,6 +150,34 @@ second source.
 LiteLLM key, so a second source would add a merge policy and a second failure
 mode to solve a problem that does not currently exist. ccusage carries three
 sources because it must price anybody's model across fifteen agents.
+
+Three things in the current code would have to give, all verified in `src/`
+rather than assumed:
+
+- **`RawPricingEntry` is `Readonly<Record<string, number>>`** -- one model's rates
+  *exactly as the source document spells them*. It is a LiteLLM shape, not a
+  neutral one.
+- **The snapshot, the cache and a fresh download go through one parser.**
+  `resolver.ts` calls `addDocument` for all three and `addDocument` calls
+  `parseLiteLlmDocument`. A cached document can therefore never be interpreted by
+  different rules than a fresh one -- a property a second source removes unless
+  each source gets its own parser and converts to `ModelPricing` itself.
+- **`pricing_version` is one string per row**, and `scripts/verify-costs.mjs`
+  reports a row whose version it cannot match as *unverifiable* rather than as a
+  mismatch. Merged rates would have to say which source paid for each row.
+  `PricedEntry` already carries a version per entry, so `lookup` can return the
+  right one; only the naming changes.
+
+Priority is the load-bearing constraint, not a detail: a second source must
+supplement models LiteLLM lacks and never overwrite one it has. ccusage reads
+LiteLLM too, so overwriting would break the parity claim in `VALIDATION.md`,
+which is what the arithmetic rests on.
+
+**Unverified, and to be checked before any of this is written:** that models.dev
+publishes per-million rather than per-token rates, nests entries by provider, and
+carries no equivalent of `cache_creation_input_token_cost_above_1hr`. If the last
+is true, a turn with cache creation priced from that source yields
+`no_pricing_data` -- an honest gap rather than a wrong number, but a gap.
 
 **Status.** Deferred.
 
