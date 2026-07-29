@@ -250,6 +250,70 @@ raised as an open question in `ROADMAP.md` rather than settled here.
 Measured live rather than on a frozen copy, which is acceptable because the
 question is the shape of an external store and not a figure TurnLens produces.
 
+## Archived and deleted sessions resume from the CLI, 29 July 2026
+
+Two throwaway sessions were opened in the desktop client under
+`~/Desktop/projects/turnlens-docs`, each given one message so a transcript
+existed. One was then archived, the other deleted, and both were resumed from a
+terminal with `claude --resume <id>` and asked a question.
+
+**Test 1, archived** (`2b8c11ec`):
+
+| Step | Flag | Transcript |
+| --- | --- | --- |
+| Before archiving | `isArchived: false` | 41 KB, 18:07:46 |
+| After archiving | `isArchived: true` | 41 KB, 18:09:57 |
+| After `--resume` and one message | **`isArchived: true`** | **48 KB, 18:15:04** |
+| After unarchiving in the client | `isArchived: false` | 48 KB, unchanged |
+
+**Test 2, deleted** (`67b9cae2`):
+
+| Step | Record | Transcript |
+| --- | --- | --- |
+| Before deleting | present, `isArchived: false` | 36 KB, 18:07:59 |
+| After deleting | **record removed**, `deleted_<uuid>` written | 36 KB |
+| After `--resume` and one message | still only the marker | **45 KB, 18:21:45** |
+
+Four results.
+
+**Both resumed.** The session opened with its history, took a message and
+answered. `claude --resume` refuses neither an archived nor a deleted session.
+
+**Both grew.** 41 KB to 48 KB and 36 KB to 45 KB. The tokens were spent and
+written to the transcript TurnLens reads.
+
+**Neither marker cleared.** `isArchived` stayed `true` through a full exchange,
+and the deletion marker stayed in place. Resuming does not undo either.
+
+**The two operations differ in the store.** Archiving keeps the
+`local_<client-id>.json` record and flips a field. Deleting removes the record
+entirely, leaving only the thirteen-byte marker -- so a deleted session has no
+title, `cwd`, model or turn count left anywhere in the desktop store.
+
+**The pairing was seen live.** Deleting `67b9cae2` also wrote a marker for
+`72e6cd8c`, a uuid with no transcript and no record anywhere under `~`, before or
+after. Every deletion measured so far has written two markers, one of which
+corresponds to nothing. Still unexplained.
+
+**Correction.** An earlier note here, taken from open issues rather than
+measured, said archiving is one-way with no unarchive in the interface.
+Unarchiving worked on this machine and set `isArchived` back to `false`, verified
+on `2b8c11ec`. The issues are real but narrower than the note made them: the
+option is reported missing or not working on some desktop versions, which is a
+known gap rather than the general rule.
+
+**What the client does with each, for context.** Archiving takes a session out of
+the Recent list and gives it a `Status: Archived` filter it can be viewed under,
+and it is also the action that removes a worktree Claude created for that session.
+Deleting removes the session from the client's list altogether: there is no trash
+filter and no restore in the interface, and a resume from the terminal does not
+reliably return it to the client's Recent list. The transcript survives both, so
+after a delete the CLI is the only way back to the conversation.
+
+Measured on one machine, one Linux desktop client, one case each. The desktop and
+web clients' own behaviour towards an archived session was not tested; only the
+CLI was.
+
 ## Still unmeasured
 
 **macOS.** The findings above are expected to hold, because `os.homedir()` and

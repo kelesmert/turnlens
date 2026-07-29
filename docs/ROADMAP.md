@@ -833,11 +833,14 @@ the CSV. `truncate` and `truncateEnd` now cut on grapheme boundaries via
 
 Nobody has decided these. A question answered here moves to `DECISIONS.md`.
 
-- **Should archived and deleted sessions keep appearing in the listing?** Written
-  up with the measurements in `SESSION-LIFECYCLE.md`. It turns on one question
-  nobody has answered: whether the CLI can still resume a session the desktop
-  client archived or deleted. The flag lives in a store the CLI does not read, so
-  the answer is probably yes -- and if it is, hiding them is wrong.
+- **Should reporting count archived and deleted sessions?** The listing question
+  is settled -- see `DECISIONS.md`, *"Archiving and deletion do not decide what the
+  listing shows"* -- but reporting is its mirror image. Every one of those
+  transcripts is still on disk and the tokens in them were spent, so a total
+  across all history should probably include them, alongside Codex's
+  `archived_sessions/`. Two things to decide: whether such a total says how much
+  of it came from sessions the user has archived or deleted, and what it does
+  about the 30-day `cleanupPeriodDays` retention that bounds any history claim.
 - **Is CSV still the right store once reporting reads across sessions?** Recorded
   as settled for v1 in `DECISIONS.md`; the reporting work is what would reopen it.
 - **How should rate-limit windows be presented?** Both providers record the raw

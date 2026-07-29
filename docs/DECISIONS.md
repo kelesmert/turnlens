@@ -68,6 +68,67 @@ belongs with the reporting work in `ROADMAP.md`.
 
 **Status.** Accepted for watching; open for reporting.
 
+### Archiving and deletion do not decide what the listing shows
+
+**Context.** A session the user archived or deleted in the Claude Code desktop
+client still appears in TurnLens's listing. The obvious fix is to read the
+client's markers and hide those sessions, on the reasoning that a conversation
+which cannot receive another message cannot produce another turn.
+
+**Decision.** Neither marker is read. Archived and deleted sessions stay in the
+listing, unhidden and unlabelled.
+
+**Consequences.** The reasoning was measured and it is wrong. Both an archived and
+a deleted session resume from the CLI, accept a message, answer it and grow their
+transcript; neither marker clears when they do. Figures in `VALIDATION.md`.
+
+The marker does not say *this session ended*. It says *this session is hidden in
+one client's list*, and the client can put it back -- unarchiving sets
+`isArchived` to `false` again, verified here. A field the user toggles in both
+directions is a view preference, not a lifecycle fact.
+
+The two lists are separately managed, which is the whole of it. Archiving moves a
+session out of the client's Recent list into a `Status: Archived` filter; deleting
+removes it from the client's list with no trash view and no restore. Neither
+touches the transcript, and resuming from a terminal does not reliably put the
+session back in the client's list either. The client's list and the transcripts
+on disk are two different records of what exists, and TurnLens reads the second.
+
+Archiving carries a side effect worth knowing separately: when a session uses a
+worktree Claude created for it, archiving is also the action that removes that
+worktree. So the operation is not purely a view change, which is another reason
+not to treat its flag as a statement about the conversation.
+
+It can therefore disagree with reality in both directions: `true` while the
+session is being used from a terminal, `false` while a session has been dead for
+months. Hiding on it would give a cost monitor its worst failure: a user resumes
+an archived session, spends tokens, and TurnLens neither lists it nor records
+what it cost. Silently undercounting is the one direction this project refuses
+everywhere else.
+
+Labelling was considered and rejected for the same reason: `(archived)` would
+keep printing next to a session the user is actively working in.
+
+The clutter this was meant to solve is already bounded. The listing is sorted by
+last activity and cut at 25, so a session that is genuinely finished stops
+advancing its `mtime` and falls off, while one that is still being used stays
+near the top -- which is the behaviour wanted, arrived at without reading
+anything.
+
+**Codex needs nothing either, and for a different reason.** Archiving there moves
+the transcript to `~/.codex/archived_sessions/`, so TurnLens omits it by not
+finding it rather than by deciding to. Codex has no deletion at all. That is not
+a precedent for hiding: TurnLens has never chosen to hide a session it could see.
+
+**Reporting is the reverse case and stays open.** Every one of these transcripts
+is still on disk and the tokens in them were spent, so a total across all history
+should probably include them. That is a question about completeness rather than
+liveness, and it is in `ROADMAP.md`.
+
+**Status.** Accepted. Supersedes the cost reasoning in *"The desktop client's
+`isArchived` marker is not joined"* above, and closes the deletion question that
+entry left open.
+
 ### A project's `memory/` subdirectory is skipped
 
 **Context.** A Claude Code project directory may contain `memory/` beside its
@@ -106,17 +167,13 @@ Worth recording because the answer moved twice: first "no signal exists", then "
 signal exists on Windows", then this. **Absence of a signal where one looked is
 not absence of a signal.**
 
-**Note, 29 July 2026.** Re-measuring the same store found a second marker this
-entry did not account for. `deleted_<uuid>` entries are named after the
-*transcript's* uuid rather than the client's, so joining them needs no schema and
-no second read -- the opposite of the cost that decided this entry. Four of the
-eight point at transcripts still on disk, which TurnLens therefore lists after
-the user deleted them in the desktop client. The reasoning above still holds for
-`isArchived`; it does not carry to deletion, and that has not been decided.
-Figures in `VALIDATION.md`, question in `ROADMAP.md`.
+**Superseded on the reasoning, not the outcome, 29 July 2026.** See *"Archiving
+and deletion do not decide what the listing shows"* below. The cost argument
+above is no longer what carries this: the marker was measured and does not mean
+what using it would require it to mean. The outcome is unchanged and now also
+covers deletion, whose join is cheap.
 
-**Status.** Accepted for watching; open for reporting; the deletion marker is a
-separate question and is open.
+**Status.** Accepted; superseded reasoning.
 
 ---
 

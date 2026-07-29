@@ -67,7 +67,6 @@ Read the area document before changing code in that area.
 | `docs/VALIDATION.md` | A figure, a platform claim, or what has not been measured |
 | `docs/ROADMAP.md` | What is planned, and which questions are still open |
 | `docs/FUTURE.md` | A candidate feature and the evidence behind it |
-| `docs/SESSION-LIFECYCLE.md` | Archiving, deletion, retention, and what the listing should show |
 
 **A document tells you where to look and what was already decided. Before
 changing code, stating what is true now, or refusing a change because it was
