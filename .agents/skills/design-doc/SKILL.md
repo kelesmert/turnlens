@@ -34,8 +34,13 @@ findings, out of scope -- plus the parts of a plan that survive inline:
 
 **No implementation bodies and no pre-written test bodies.** Both are unverified
 code, and TDD derives an implementation from its test rather than from a
-document. `docs/superpowers/plans/2026-07-27-turnlens-pre-release-cleanup.md` is
-the shape to copy: 344 lines, one `interface` block, behaviours as prose.
+document.
+
+The shape to aim for is around 350 lines for a plan-sized piece of work: type
+signatures and `interface` blocks where an interface is being fixed, and
+everything else as prose. If a section could be pasted into a source file and
+compile, it is too much. The two design documents written to this rule came to
+460 and 532 lines and replaced plans that would have run to thousands.
 
 ## One gate, not two
 

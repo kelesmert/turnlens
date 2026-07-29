@@ -12,10 +12,11 @@ Each plan produces working, testable software on its own.
 A question answered here moves to `DECISIONS.md` rather than being deleted.
 Candidate features with evidence behind them live in `FUTURE.md`.
 
-Paths under `docs/superpowers/` name the design document a plan was worked out
-in. That directory is scaffolding and is not part of the repository; anything
-from it that outlived the work it was written for is already here, in
-`ARCHITECTURE.md`, or in `DECISIONS.md`.
+**This file does not depend on the scaffolding a plan was designed in.** Design
+documents are working material, they are not part of the repository, and a reader
+who has only this repository cannot open one. So everything a plan established
+that outlived it is written here, or in `ARCHITECTURE.md`, `DECISIONS.md`,
+`VALIDATION.md` or `areas/` -- never left behind a path.
 
 ## The name
 
@@ -32,8 +33,6 @@ those records now read `turnlens` where the machine at the time said
 `turnscope`. The dates and the reasoning are unchanged; only the name moved.
 
 ## Plan 1 — Core and Codex provider (complete)
-
-`docs/superpowers/plans/2026-07-25-turnlens-core-codex-provider.md`
 
 Zero-dependency TypeScript CLI that live-monitors one Codex session and records
 per-turn token usage to CSV. It fixes the Python prototype's defects
@@ -54,8 +53,6 @@ Cost was out of scope for Plan 1: the `estimated_cost_usd` column was written
 empty until Plan 2 filled it.
 
 ## Plan 2 — Native pricing (complete)
-
-`docs/superpowers/plans/2026-07-25-turnlens-native-pricing.md`
 
 Removes the external `ccusage` dependency, which currently costs up to twelve
 subprocess spawns per turn (P2-2).
@@ -105,8 +102,6 @@ same version marked `(offline)`, and an unroutable source falls through in
 exactly 5.0 seconds with one notice and correct prices from cache.
 
 ## Plan 3 — Claude Code provider (complete)
-
-`docs/superpowers/plans/2026-07-26-turnlens-claude-code-provider.md`
 
 Shipped: `src/providers/claude-code/parser.ts` and `sessions.ts`, plus the
 registry entry. **310 tests green**; `npm run typecheck` and `npm run build`
@@ -192,8 +187,6 @@ agrees too.
 
 ## Plan 3.5 — Pre-release cleanup (complete)
 
-`docs/superpowers/plans/2026-07-27-turnlens-pre-release-cleanup.md`
-
 `src/cli.ts` was the only source module no test imported -- one of 27 before this
 plan, 28 after it added `src/options.ts` -- and the reason was structural rather
 than neglect: a top-level `await main()`
@@ -221,8 +214,6 @@ Done before v0.1.0 deliberately. A published version freezes what it contains,
 so a restructure that costs nothing today costs a version number tomorrow.
 
 ## Plan 3.6 — Session discovery across platforms and configurations (complete)
-
-`docs/superpowers/specs/2026-07-27-session-discovery-design.md`
 
 Shipped: `src/core/home.ts` and `src/core/env-paths.ts`, plus changes to
 `core/paths.ts`, both providers, `core/types.ts`, `options.ts` and `cli.ts`.
@@ -338,8 +329,6 @@ macOS is unmeasured. Every fix above is platform-independent and lands for all
 three, but macOS carries the label "expected" until a machine says otherwise.
 
 ## Plan 3.7 — Terminal width adaptation (complete)
-
-`docs/superpowers/specs/2026-07-28-terminal-width-adaptation-design.md`
 
 The live table was 174 characters wide and nothing measured the terminal. This
 is the fourth defect of one family, and the third reported from Windows: a
@@ -507,8 +496,6 @@ reporting trap in `VALIDATION.md`. The reason `truncateEnd` exists survived the
 change -- the uuid is still the part worth keeping -- but its example did not.
 
 ## Plan 4 — Packaging and release
-
-`docs/superpowers/plans/2026-07-27-turnlens-packaging-and-release.md`
 
 **Prerequisite: Plan 3.8, which is done.** Nothing in this plan changes how
 TurnLens behaves; it assumes the behaviour is already the one that ships, and now
