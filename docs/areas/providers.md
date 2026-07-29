@@ -65,10 +65,14 @@ both in the desktop client's own store, and the transcript stays readable and
 resumable in place. So an archived Claude Code session keeps appearing in the
 listing, and that is correct -- see Decisions.
 
-`archived_sessions/` is **flat**, while `sessions/` is nested by date. Since
-`sessionId` is `relative(sessionsRoot, path)`, the same transcript would get two
-different ids depending on which root read it. Anything that starts scanning the
-archive has to settle that first.
+`archived_sessions/` is **flat**, while `sessions/` is nested by date. That is
+why **a Codex session is identified by its filename, not by its path**:
+`basename(path, ".jsonl")`, so the directories above a transcript cannot change
+its id. A path-derived id gave the same transcript two spellings depending on
+which root read it, and the CSV filename follows the id, so archiving a watched
+session would have started a second file and counted it twice. Nothing is lost
+by dropping the directories, because the filename already carries both the
+timestamp and the uuid.
 
 ### Transcripts do not live forever
 
@@ -138,4 +142,5 @@ src/core/home.ts                        the single home resolver
 - `CODEX_HOME` not split on commas -- `DECISIONS.md`
 - `archived_sessions/` not read -- `DECISIONS.md`
 - The desktop client's `isArchived` marker not joined -- `DECISIONS.md`
+- A Codex session id is its filename, not its path -- `DECISIONS.md`
 - Subagent transcripts out of scope -- `DECISIONS.md`, `FUTURE.md` section 4

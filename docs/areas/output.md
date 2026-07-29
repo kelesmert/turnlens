@@ -57,9 +57,11 @@ copied here, because a copy would be right until the next flag is added.
   `process.stdout.columns` and `COLUMNS` behave identically on all three.
 - **`truncate` cuts from the front; `truncateEnd` keeps the end.** The second
   exists for identifiers: a Codex session id is
-  `<year>/<month>/<day>/rollout-<timestamp>-<uuid>`, the uuid identifies it, and
-  the date is already shown in its own column, so cutting from the right would
-  discard the only part worth reading.
+  `rollout-<timestamp>-<uuid>`, the uuid identifies it, and the date is already
+  shown in its own column, so cutting from the right would discard the only part
+  worth reading. The reason outlived its original example -- the id used to carry
+  `<year>/<month>/<day>/` in front as well, and dropping those made the string
+  shorter without making the front of it any more worth keeping.
 - **Display width is still counted in code units**, and this is deliberate. See
   Decisions before "fixing" it.
 - **The session listing gives up its date last, not first.** Three of its four

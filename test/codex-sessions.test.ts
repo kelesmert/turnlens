@@ -155,9 +155,33 @@ describe("listAllSessionsNewestFirst", () => {
     expect(sessions[0]?.path).toBe(newer);
     expect(sessions[1]?.sessionName).toBe("Named session");
     expect(sessions[1]?.sessionId).toBe(
-      join("2026", "07", "22", "rollout-2026-07-22T05-28-45-019f87a7-6fb6-7571-96fe-d9842e2f7f80"),
+      "rollout-2026-07-22T05-28-45-019f87a7-6fb6-7571-96fe-d9842e2f7f80",
     );
     expect(sessions[0]?.sessionName).toBe("(unnamed session)");
+  });
+
+  it("identifies a session by its filename, so the directories above it cannot change its id", async () => {
+    // Codex nests live sessions by date and keeps archived ones flat. Deriving
+    // the id from the path would give one transcript two ids, and the CSV
+    // filename follows the id, so the same session would be recorded twice.
+    const filename = "rollout-2026-07-22T05-28-45-019f87a7-6fb6-7571-96fe-d9842e2f7f80.jsonl";
+
+    const nestedHome = await fakeCodexHome();
+    const dayDir = join(nestedHome, "sessions", "2026", "07", "22");
+    await mkdir(dayDir, { recursive: true });
+    await writeFile(join(dayDir, filename), "", "utf8");
+
+    const flatHome = await fakeCodexHome();
+    await mkdir(join(flatHome, "sessions"), { recursive: true });
+    await writeFile(join(flatHome, "sessions", filename), "", "utf8");
+
+    const nested = await listAllSessionsNewestFirst(resolveCodexPaths({ CODEX_HOME: nestedHome }));
+    const flat = await listAllSessionsNewestFirst(resolveCodexPaths({ CODEX_HOME: flatHome }));
+
+    expect(nested[0]?.sessionId).toBe(flat[0]?.sessionId);
+    expect(nested[0]?.sessionId).toBe(
+      "rollout-2026-07-22T05-28-45-019f87a7-6fb6-7571-96fe-d9842e2f7f80",
+    );
   });
 
   it("finds sessions nested at any depth and ignores non-jsonl files", async () => {

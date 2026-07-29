@@ -466,10 +466,10 @@ reproduces the defect the notice exists to report.
 
 macOS is unmeasured, as ever. Nothing here branches on platform.
 
-## Plan 3.8 — The Codex session id
+## Plan 3.8 — The Codex session id (complete)
 
-One change, and it is the last one that has to reach the code before the package
-is published: **a Codex session id becomes its filename rather than its path**
+One change, and it was the last one that had to reach the code before the package
+is published: **a Codex session id is its filename rather than its path**
 (`DECISIONS.md`, *"A Codex session id is its filename, not its path"*).
 
 It was found while designing the reporting work and first written down as a Plan
@@ -478,33 +478,41 @@ It was found while designing the reporting work and first written down as a Plan
 should begin against an application that is already finished and correct, so the
 change is its own step and Plan 4's prerequisite.
 
-`relative(sessionsRoot, path)` puts the date directories into the id
-(`2026/07/29/rollout-<timestamp>-<uuid>`) and the filename already carries both
-the timestamp and the uuid, so nothing is lost by dropping them. It also removes
-a defect reporting would have walked into: `archived_sessions/` is flat while
-`sessions/` is nested, so one transcript yields two ids and would be counted
-twice.
+`relative(sessionsRoot, path)` put the date directories into the id
+(`2026/07/29/rollout-<timestamp>-<uuid>`) while the filename already carried both
+the timestamp and the uuid, so nothing was lost by dropping them. It is now
+`basename(path, ".jsonl")`. That also removes a defect reporting would have
+walked into: `archived_sessions/` is flat while `sessions/` is nested, so one
+transcript yielded two ids and would have been counted twice.
 
-The whole of it is `src/providers/codex/sessions.ts` and its tests, plus two
-paragraphs that describe the old id and would become wrong the moment it lands:
-the discovery section of `areas/providers.md`, and the `truncateEnd` trap in
-`areas/output.md`, which spells the id out as
-`<year>/<month>/<day>/rollout-<timestamp>-<uuid>` while explaining why the
-function cuts from the front. The reason survives the change -- the uuid is still
-the part worth keeping -- but the example does not.
+Measured before deciding: every CSV on this machine is Claude Code's, whose id is
+unaffected, and no Codex CSV had ever been written anywhere. So the change cost
+nothing, and would have orphaned other people's files once the package is out --
+which is why it went first.
 
-Measured before deciding: every CSV
-on this machine is Claude Code's, whose id is unaffected, and no Codex CSV has
-ever been written anywhere. So the change costs nothing today and orphans other
-people's files once the package is out -- which is the whole reason it goes
-first.
+**Shipped: 424 tests across 30 files**, up from 423; `npm run typecheck` and
+`npm run build` both exit 0. Two tests carry it. The first is the id itself. The
+second is the one worth having: the same filename discovered under a nested root
+and under a flat one must produce the same id, which is the double-count the flat
+`archived_sessions/` would otherwise cause, asserted rather than reasoned about.
+
+Verified against real data as well as fixtures -- this machine's 20 Codex
+transcripts all now resolve to `rollout-<timestamp>-<uuid>`, with the CSV path
+following (`VALIDATION.md`).
+
+Three documents moved with the code, in the same commit: the discovery section of
+`areas/providers.md`, the `truncateEnd` trap in `areas/output.md`, which spelled
+the old id out while explaining why the function cuts from the front, and the
+reporting trap in `VALIDATION.md`. The reason `truncateEnd` exists survived the
+change -- the uuid is still the part worth keeping -- but its example did not.
 
 ## Plan 4 — Packaging and release
 
 `docs/superpowers/plans/2026-07-27-turnlens-packaging-and-release.md`
 
-**Prerequisite: Plan 3.8.** Nothing in this plan changes how TurnLens behaves, so
-it assumes the behaviour is already the one that ships.
+**Prerequisite: Plan 3.8, which is done.** Nothing in this plan changes how
+TurnLens behaves; it assumes the behaviour is already the one that ships, and now
+it is.
 
 The work is turning a repository people clone into a package people install.
 Nothing about how TurnLens runs changes; what changes is how it reaches anyone.
@@ -931,9 +939,10 @@ Nobody has decided these. A question answered here moves to `DECISIONS.md`.
      `cost_status` value or its own column; deferred until the work starts, but
      not optional once it does.
 
-  The id defect this turned up is settled separately and lands earlier, as
+  The id defect this turned up was settled separately and landed first, as
   Plan 3.8: see `DECISIONS.md`, *"A Codex session id is its filename, not its
-  path"*. It is free to fix now and expensive after the first release.
+  path"*. So this work can scan `archived_sessions/` without producing a second
+  id for a session it already recorded.
 - **Is CSV still the right store once reporting reads across sessions?** Recorded
   as settled for v1 in `DECISIONS.md`; the reporting work is what would reopen it.
 - **How should rate-limit windows be presented?** Both providers record the raw

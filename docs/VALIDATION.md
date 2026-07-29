@@ -353,11 +353,14 @@ which is the opposite of Claude Code, where the marker leaves the session fully
 usable. Restoring it puts the file back under the scanned root, where TurnLens
 finds it again with no code involved.
 
-### The archived directory is flat, and that is a trap for reporting
+### The archived directory is flat, and that was a trap for reporting
+
+**Found here, fixed in Plan 3.8.** Recorded as measured rather than rewritten,
+because the measurement is what found the defect.
 
 Live transcripts are nested by date; archived ones sit directly in
-`archived_sessions/`. `sessionId` is derived as `relative(sessionsRoot, path)`
-(`providers/codex/sessions.ts`), so the same transcript yields two different ids
+`archived_sessions/`. `sessionId` was derived as `relative(sessionsRoot, path)`
+(`providers/codex/sessions.ts`), so the same transcript yielded two different ids
 depending on which root it was read from:
 
 ```
@@ -365,9 +368,15 @@ sessions/2026/07/29/rollout-…jsonl   ->  2026/07/29/rollout-…
 archived_sessions/rollout-…jsonl     ->  rollout-…
 ```
 
-The CSV filename comes from that id. A reporting pass that scans
-`archived_sessions/` naively would therefore write a second CSV for a session
-that was watched before it was archived, and count it twice.
+The CSV filename comes from that id. A reporting pass that scanned
+`archived_sessions/` naively would therefore have written a second CSV for a
+session watched before it was archived, and counted it twice.
+
+The id is now `basename(path, ".jsonl")`, so no directory above a transcript can
+change it. Verified against this machine's 20 real Codex transcripts on 29 July
+2026: every id reads `rollout-<timestamp>-<uuid>`, and the CSV path each would
+produce is `turnlens-usage/codex/rollout-….csv` with no date segment in front.
+See `DECISIONS.md`, *"A Codex session id is its filename, not its path"*.
 
 ## The package, re-measured 29 July 2026
 

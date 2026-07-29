@@ -1,5 +1,5 @@
 import { readFile, readdir, stat } from "node:fs/promises";
-import { basename, join, relative } from "node:path";
+import { basename, join } from "node:path";
 import { expandTilde } from "../../core/env-paths.js";
 import { resolveHome } from "../../core/home.js";
 import { collapseWhitespace } from "../../core/text.js";
@@ -87,6 +87,13 @@ export async function loadSessionNames(
  * so this includes sessions that can no longer produce turns; modification time
  * is the only honest ordering signal. The previous Python implementation claimed
  * to list only active sessions while doing exactly this.
+ *
+ * **A session is identified by its filename, not by its path.** The directories
+ * carry a date the filename already holds, and Codex spells the same transcript
+ * two ways: nested under `sessions/<y>/<m>/<d>/` while it is live, flat in
+ * `archived_sessions/` once it is archived. A path-derived id would give one
+ * session two ids, and the CSV filename follows the id, so archiving it would
+ * start a second file and count it twice.
  */
 export async function listAllSessionsNewestFirst(
   paths: CodexPaths,
@@ -104,8 +111,8 @@ export async function listAllSessionsNewestFirst(
       continue;
     }
 
-    const sessionId = relative(paths.sessionsRoot, path).replace(/\.jsonl$/u, "");
-    const uuid = SESSION_UUID_PATTERN.exec(basename(sessionId))?.[1]?.toLowerCase();
+    const sessionId = basename(path, ".jsonl");
+    const uuid = SESSION_UUID_PATTERN.exec(sessionId)?.[1]?.toLowerCase();
 
     refs.push({
       provider: "codex",
