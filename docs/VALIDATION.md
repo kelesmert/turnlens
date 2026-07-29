@@ -321,6 +321,54 @@ Measured on one machine, one Linux desktop client, one case each. The desktop an
 web clients' own behaviour towards an archived session was not tested; only the
 CLI was.
 
+## Codex archiving, measured 29 July 2026
+
+The Claude Code test above asked whether a hidden session can still be used. The
+same question was put to Codex, through the VS Code extension, which is how Codex
+runs on this machine.
+
+A new session was created, given one message, then archived.
+
+| Step | `sessions/` | `archived_sessions/` | `session_index.jsonl` |
+| --- | --- | --- | --- |
+| Before | 20 | 5 | 11 names |
+| After creating | **21** -- 52,489 bytes, 20:33 | 5 | **12 names** |
+| After archiving | 20 | **6** -- 52,489 bytes, 20:33 | 12 names |
+
+**The file is moved, not rewritten.** Byte count and modification time are
+identical either side of the move, so an archived transcript keeps the timestamp
+that would sort it.
+
+**The name survives.** The `session_index.jsonl` entry stays after archiving, so
+an archived session still resolves to its display name rather than
+`(unnamed session)`.
+
+**Archiving is not reversible from the extension.** There is no unarchive there.
+The only way back is to move the file into `~/.codex/sessions/<year>/<month>/<day>/`
+by hand -- the account owner had previously written a small tool to do exactly
+that.
+
+**So an archived Codex session cannot produce another turn while it is archived**,
+which is the opposite of Claude Code, where the marker leaves the session fully
+usable. Restoring it puts the file back under the scanned root, where TurnLens
+finds it again with no code involved.
+
+### The archived directory is flat, and that is a trap for reporting
+
+Live transcripts are nested by date; archived ones sit directly in
+`archived_sessions/`. `sessionId` is derived as `relative(sessionsRoot, path)`
+(`providers/codex/sessions.ts`), so the same transcript yields two different ids
+depending on which root it was read from:
+
+```
+sessions/2026/07/29/rollout-…jsonl   ->  2026/07/29/rollout-…
+archived_sessions/rollout-…jsonl     ->  rollout-…
+```
+
+The CSV filename comes from that id. A reporting pass that scans
+`archived_sessions/` naively would therefore write a second CSV for a session
+that was watched before it was archived, and count it twice.
+
 ## Still unmeasured
 
 **macOS.** The findings above are expected to hold, because `os.homedir()` and

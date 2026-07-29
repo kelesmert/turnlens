@@ -115,10 +115,26 @@ advancing its `mtime` and falls off, while one that is still being used stays
 near the top -- which is the behaviour wanted, arrived at without reading
 anything.
 
-**Codex needs nothing either, and for a different reason.** Archiving there moves
-the transcript to `~/.codex/archived_sessions/`, so TurnLens omits it by not
-finding it rather than by deciding to. Codex has no deletion at all. That is not
-a precedent for hiding: TurnLens has never chosen to hide a session it could see.
+**Codex needs nothing either, and the difference is now understood rather than
+noticed.** Archiving there moves the transcript to `~/.codex/archived_sessions/`,
+out of the directory the agent itself reads, and the VS Code extension offers no
+way back -- restoring means moving the file into
+`sessions/<year>/<month>/<day>/` by hand. An archived Codex session therefore
+*cannot* produce another turn while it is archived, and if it is restored, it
+reappears under the scanned root with no code involved. Codex has no deletion at
+all.
+
+So the two agents are listed differently because they behave differently, and
+both outcomes are right:
+
+| | Claude Code | Codex |
+| --- | --- | --- |
+| What archiving does | Sets a flag; the session stays usable | Moves the file out of the read path |
+| Can it still take a turn | **Yes** | **No** |
+| TurnLens lists it | **Yes** | **No** |
+
+This is not a precedent for hiding. TurnLens has never chosen to hide a session it
+could see; in the Codex case there is nothing where it looks.
 
 **Reporting is the reverse case and stays open.** Every one of these transcripts
 is still on disk and the tokens in them were spent, so a total across all history

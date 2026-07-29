@@ -53,11 +53,22 @@ lists every session in it twice.
 
 ### The two agents archive differently
 
-Codex moves the transcript, so TurnLens stops listing an archived session without
-being told anything. Claude Code leaves the transcript where it is, so an archived
-conversation keeps appearing in the session list, and nothing under `~/.claude`
-marks it. Deleting a Claude Code session leaves the transcript too. Both are
-deliberate on TurnLens's side -- see Decisions.
+Codex **moves** the transcript to `~/.codex/archived_sessions/`, out of the
+directory Codex itself reads, so an archived Codex session cannot take another
+turn and TurnLens stops listing it without being told anything. The move is
+byte-for-byte and keeps the modification time; the `session_index.jsonl` name
+entry survives it. Restoring means moving the file back into
+`sessions/<year>/<month>/<day>/` by hand.
+
+Claude Code **moves nothing**. Archiving sets a flag and deleting writes a marker,
+both in the desktop client's own store, and the transcript stays readable and
+resumable in place. So an archived Claude Code session keeps appearing in the
+listing, and that is correct -- see Decisions.
+
+`archived_sessions/` is **flat**, while `sessions/` is nested by date. Since
+`sessionId` is `relative(sessionsRoot, path)`, the same transcript would get two
+different ids depending on which root read it. Anything that starts scanning the
+archive has to settle that first.
 
 ### Transcripts do not live forever
 
