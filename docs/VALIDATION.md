@@ -448,6 +448,44 @@ directories, and no runner has Codex or Claude Code installed. So this says the
 suite passes on macOS. It says nothing about whether TurnLens finds a real
 transcript there -- see below, which is unchanged by this run.
 
+## The first publish, 30 July 2026
+
+`turnlens@0.1.0` is on the registry, `latest` points at it, and
+`npx turnlens@latest --help` runs it from the registry and exits 0.
+
+**`npm trust github` does not work before the package exists.** This was the
+plan's explicit open question and the answer is no. Run against an unpublished
+name it returns `404 Not Found` from `POST /-/package/turnlens/trust` -- and it
+returns it *after* the two-factor flow completes, which is what makes the failure
+easy to misread. The log is unambiguous: `401` on the first attempt, the web auth
+round-trip, then `200` on the auth check, then `404` on the trust POST. Nothing
+was wrong with the credentials; there was no package resource to attach trust to.
+
+Run again after publishing, the same command succeeded and returned a trust id.
+So the bootstrap path in the plan was the necessary one, not a fallback.
+
+Two smaller things the plan had recorded as settled and were not:
+
+- **The npm login had expired.** The plan's starting state said "logged in as
+  `kelesmert`", measured three days earlier. `npm whoami` returned `401` with an
+  auth line still present in `~/.npmrc`, so the stored token had been revoked or
+  aged out -- npm is retiring tokens that bypass 2FA, and granular tokens expire
+  every 90 days. A recorded login is not a durable fact.
+- **A publish by hand needs `--no-provenance`.** `publishConfig.provenance` is
+  `true`, and provenance can only be generated where an OIDC identity exists,
+  which means CI. `npm publish --dry-run` does not reveal this because it never
+  attempts the attestation. So `0.1.0` carries no provenance and every version
+  published through the workflow will.
+
+**The published tarball carries the README as it stood at publish time, and that
+README said "Not on npm yet".** npm always includes `README.md` regardless of
+`files`, and Task 4 was deliberately gated until the package was live so the
+install command it documents could be verified against the registry. Both
+decisions were right on their own and together they shipped a stale README. The
+gate should have been on *verifying* the command, not on writing the section.
+Corrected by `0.1.1` rather than by anything cleverer, since a published version
+cannot be replaced.
+
 ## Still unmeasured
 
 **macOS session discovery.** The findings above are expected to hold, because

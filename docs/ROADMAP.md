@@ -636,15 +636,27 @@ it. So the plan branches: attempt it, and if it fails, publish `0.1.0` by hand
 with a one-time password, then configure trust and let every later version go
 through the workflow.
 
-The branch is still live. Re-checked 29 July 2026: the command is present locally
-under npm 11.16.0, and `turnlens` still returns `404 Not Found` from the
-registry, so the name is unclaimed and the "no page yet" case is the one this
-release will actually meet. What the command does against a name that does not
-exist remains the one thing here nobody can answer without publishing.
+**The branch resolved to the bootstrap side, on 30 July 2026.** `npm trust
+github` returns `404` against a name that does not exist yet, and it returns it
+after the two-factor flow rather than before, which is what makes the failure
+look like an authentication problem. So `0.1.0` was published by hand and trust
+was configured afterwards, when the package had a page; the same command then
+succeeded. Recorded with the log in `VALIDATION.md`, "The first publish".
 
-Once the package is up, the README install section is rewritten around
-`npx turnlens@latest` -- `@latest` rather than bare `npx`, which can serve a
-cached older version.
+Two things that stood here as settled were not. The npm login had expired since
+the plan was written, and a publish by hand needs `--no-provenance`, because
+provenance requires an OIDC identity and that only exists in CI. `0.1.0`
+therefore carries no attestation and every workflow-published version will.
+
+`0.1.0` shipped with a stale README, and the sequencing that caused it is worth
+keeping. The README install section was rewritten only after the package was
+live, so that the command it documents could be verified against the registry --
+and npm includes `README.md` in the tarball whatever `files` says, so the
+published copy is the one that still read "Not on npm yet". Each decision was
+right alone. The gate belonged on verifying the command, not on writing the
+section. It cannot be repaired in place, because a published version is
+permanent, so `0.1.1` is what fixes it -- and that release is the first to go
+through the workflow, which is where it was going anyway.
 
 ### Carried forward
 
