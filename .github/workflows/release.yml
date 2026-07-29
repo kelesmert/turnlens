@@ -1,0 +1,67 @@
+name: Release
+
+# A published GitHub Release, and nothing else. Not push, not tag creation: an
+# npm version number is burned permanently the moment it is used, so publishing
+# has to be an act rather than a side effect of merging.
+#
+# THIS FILENAME IS FROZEN. npm's trusted publishing configuration names this
+# exact file. Renaming it breaks publishing with no visible cause.
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # The whole mechanism. This lets the runner mint an OIDC token proving to
+      # npm which repository, workflow and commit is asking, so no npm token is
+      # stored anywhere. Without it the publish fails on authentication with no
+      # hint as to why.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or later. Node 22 bundles npm 10
+      # and would fail outright; Node 24 and 26 bundle npm 11. This runs anyway,
+      # because which npm minor ships inside a given Node patch is not something
+      # this repository controls.
+      - name: Install a publishing-capable npm
+        run: npm install -g npm@latest
+
+      # The most valuable step in this file. package.json is the only thing npm
+      # reads when deciding what version it is publishing; the git tag is a
+      # label. Tagging v0.1.2 while the file still says 0.1.0 would produce a
+      # release page that disagrees with the registry permanently.
+      - name: Refuse a tag that disagrees with package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          file="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$file" ]; then
+            echo "Release tag and package.json disagree."
+            echo "  tag:          ${GITHUB_REF_NAME} (version ${tag})"
+            echo "  package.json: ${file}"
+            echo "Bump package.json first, then tag the commit that contains the bump."
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} agrees with package.json ${file}."
+
+      - run: npm ci
+
+      # These repeat what prepublishOnly runs inside npm publish, deliberately.
+      # Explicit steps fail earlier and name which check failed in the job list,
+      # while prepublishOnly is what protects a publish run from a laptop. The
+      # suite is fast enough that running it twice costs nothing worth saving.
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+
+      - run: npm publish
