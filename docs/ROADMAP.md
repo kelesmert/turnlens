@@ -511,7 +511,8 @@ minutes before the first row of output. The destination is `npm install -g
 turnlens` or `npx turnlens@latest`.
 
 The package itself is already sound. The packed tarball is **35 files and
-47.7 kB**, measured on 29 July 2026, and installing that tarball into a scratch
+47.8 kB**, measured on 29 July 2026 after Plan 3.8, and installing that tarball
+into a scratch
 prefix produces a working `turnlens` command. The name is unclaimed on the
 registry. So this plan is almost entirely metadata, automation and one
 irreversible button.

@@ -396,6 +396,12 @@ The four files are `dist/core/env-paths.js`, `dist/core/home.js`,
 modules. Nothing about packaging changed, which is why the growth needed no
 decision, only a corrected number.
 
+**Taken a second time after Plan 3.8, the same day: 35 files and 47.8 kB, and
+424 tests across 30 files.** The table above was measured hours earlier, before
+that change landed. The figures are left as they were read rather than edited,
+and the difference is one file rewritten -- `providers/codex/sessions.ts` -- and
+one test added. This is the last measurement before Plan 4 begins.
+
 Two package facts checked at the same time, both against the machine rather than
 against documentation:
 
