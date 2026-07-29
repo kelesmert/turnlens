@@ -24,7 +24,21 @@ Supported agents: **Codex** and **Claude Code**.
 
 Requires Node 22 or newer. No runtime dependencies.
 
-**Not on npm yet.** Until it is published, run it from source:
+```bash
+npx turnlens@latest
+```
+
+That is the whole install. `@latest` is not decoration: a bare `npx turnlens` can
+serve a copy already sitting in the local cache, so it may run an older build and
+show a bug that is already fixed.
+
+For a permanent command:
+
+```bash
+npm install -g turnlens
+```
+
+**From source**, which is how the repository itself is developed:
 
 ```bash
 git clone https://github.com/kelesmert/turnlens.git
@@ -34,14 +48,12 @@ npm run build
 node dist/cli.js --help
 ```
 
-Once published, `npx turnlens@latest` will be the whole install.
-
 ## Usage
 
 Run it, pick a session, leave it running in a second terminal while you work.
 
 ```bash
-node dist/cli.js --provider claude-code
+turnlens --provider claude-code
 ```
 
 TurnLens lists the sessions it can find, most recently active first, and asks
