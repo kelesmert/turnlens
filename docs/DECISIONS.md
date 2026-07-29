@@ -384,6 +384,7 @@ the same change orphans other people's files, so it belongs before the release
 rather than with the reporting work that revealed it.
 
 **Status.** Accepted, not yet implemented. Supersedes the path-derived id.
+Scheduled as Plan 3.8 in `ROADMAP.md`, ahead of packaging rather than inside it.
 
 ### The provider segment in the CSV path buys readability, not correctness
 

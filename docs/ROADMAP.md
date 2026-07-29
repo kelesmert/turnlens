@@ -466,17 +466,41 @@ reproduces the defect the notice exists to report.
 
 macOS is unmeasured, as ever. Nothing here branches on platform.
 
+## Plan 3.8 — The Codex session id
+
+One change, and it is the last one that has to reach the code before the package
+is published: **a Codex session id becomes its filename rather than its path**
+(`DECISIONS.md`, *"A Codex session id is its filename, not its path"*).
+
+It was found while designing the reporting work and first written down as a Plan
+4 item, which was the wrong home for it. Plan 4 is packaging; the deadline
+"before the release" is not the same thing as belonging to the release. Packaging
+should begin against an application that is already finished and correct, so the
+change is its own step and Plan 4's prerequisite.
+
+`relative(sessionsRoot, path)` puts the date directories into the id
+(`2026/07/29/rollout-<timestamp>-<uuid>`) and the filename already carries both
+the timestamp and the uuid, so nothing is lost by dropping them. It also removes
+a defect reporting would have walked into: `archived_sessions/` is flat while
+`sessions/` is nested, so one transcript yields two ids and would be counted
+twice.
+
+The whole of it is `src/providers/codex/sessions.ts`, its tests, and the
+discovery paragraph in `areas/providers.md`. Measured before deciding: every CSV
+on this machine is Claude Code's, whose id is unaffected, and no Codex CSV has
+ever been written anywhere. So the change costs nothing today and orphans other
+people's files once the package is out -- which is the whole reason it goes
+first.
+
 ## Plan 4 — Packaging and release
 
 `docs/superpowers/plans/2026-07-27-turnlens-packaging-and-release.md`
 
+**Prerequisite: Plan 3.8.** Nothing in this plan changes how TurnLens behaves, so
+it assumes the behaviour is already the one that ships.
+
 The work is turning a repository people clone into a package people install.
 Nothing about how TurnLens runs changes; what changes is how it reaches anyone.
-
-One item joined this plan from elsewhere, because publishing is what makes it
-expensive: **a Codex session id becomes its filename rather than its path**
-(`DECISIONS.md`). No Codex CSV exists anywhere yet, so the change costs nothing
-today; after the first release it orphans other people's files.
 
 Today the only route in is `git clone`, `npm install`, `npm run build`,
 `node dist/cli.js`. That route works -- verified by cloning the public repository
@@ -484,10 +508,16 @@ and following the README verbatim -- but it asks for git, a build step and three
 minutes before the first row of output. The destination is `npm install -g
 turnlens` or `npx turnlens@latest`.
 
-The package itself is already sound. The packed tarball is 31 files and 37 kB,
-and installing that tarball into a scratch prefix produces a working `turnlens`
-command. The name is unclaimed on the registry. So this plan is almost entirely
-metadata, automation and one irreversible button.
+The package itself is already sound. The packed tarball is **35 files and
+47.7 kB**, measured on 29 July 2026, and installing that tarball into a scratch
+prefix produces a working `turnlens` command. The name is unclaimed on the
+registry. So this plan is almost entirely metadata, automation and one
+irreversible button.
+
+That is up from the 31 files and 37 kB this section recorded when it was written.
+Nothing about packaging changed; Plans 3.5 and 3.7 added modules, and the figure
+is a measurement of the code rather than a target. It is restated here only so
+the number in the document is one somebody can reproduce.
 
 ### Nothing is bundled
 
@@ -500,7 +530,11 @@ ships as it is emitted. The `bin` field is what creates the shell command, and
 ### Metadata, and one field that is not optional
 
 `version` goes to `0.1.0` and `engines.node` to `>=22.0.0`, both already decided.
-The README already states 22.
+
+The second is not a bump but a repair. `package.json` says `>=20.0.0` today and
+the README says 22, so the two disagree with each other right now, and npm reads
+the file rather than the prose. Whichever way it were settled, one of the two is
+currently telling somebody the wrong thing.
 
 Four fields are missing: `repository`, `homepage`, `bugs`, `keywords`. Three of
 them are presentation -- the npm page and its search. `repository` is not.
@@ -557,6 +591,16 @@ than it looks: every path is composed with `join`, and the tests compare against
 transform identically. That is an argument, not evidence. The job is the
 evidence.
 
+**One thing about the Windows checkout will look broken and is not.** The
+repository now tracks three symlinks -- `CLAUDE.md`, `.claude/skills` and
+`.codex/skills`, all recorded as mode `120000`. Git for Windows leaves
+`core.symlinks` off unless the account may create links, so `actions/checkout`
+materialises each one as a small text file containing the path it pointed at.
+Nothing in `npm run build`, `npm test` or `npm pack` reads any of the three --
+they are for the agent working on the repository, and `files: ["dist"]` keeps
+them out of the tarball -- so the job passes with them in that state. Recorded
+here so nobody spends a morning on it.
+
 ### Releasing
 
 The second workflow triggers on a published GitHub Release and nothing else.
@@ -603,12 +647,14 @@ cached older version.
   directory `os.homedir()` returns, and PowerShell leaves it unset. The predicted
   divergence does not occur on a default installation.
 
-  What remains is a different and smaller defect. `core/paths.ts` reads `HOME`
-  first; both provider modules call `os.homedir()` directly. Wherever the two
-  disagree -- a Unix-style `HOME` under MSYS2, Cygwin, or a user who sets it by
-  hand -- sessions would be read under one home while the lock and pricing cache
-  are written under another. It is not platform-specific and it is worth fixing
-  on its own terms.
+  **The smaller defect recorded after it has also gone.** This entry then said
+  that `core/paths.ts` read `HOME` while both provider modules called
+  `os.homedir()` directly, so sessions could be read under one home while the
+  lock and the pricing cache were written under another. Checked against the
+  source on 29 July 2026: `os.homedir()` is called in exactly one place,
+  `core/home.ts`, and `core/paths.ts` and both provider modules reach it through
+  `resolveHome(env)`. The single resolver is now an invariant in
+  `areas/providers.md`. Nothing is left to fix here.
 
   macOS is unmeasured. It is expected to behave like Linux, and expectation is
   recorded as expectation until a machine says otherwise.
@@ -629,7 +675,7 @@ cached older version.
   `fs` so it behaves the same on Windows.
 
   Verified by installing the real tarball into a scratch project: the `turnlens`
-  command appears and runs. 31 files and 36 kB packed today, against 84 and
+  command appears and runs. 31 files and 36 kB packed at `ace4176`, against 84 and
   65 kB before -- 30 files at the time of the change, plus `options.js` from
   Plan 3.5.
 
@@ -766,20 +812,20 @@ from the code we have:
   different `requestId`, so the deduplication key would have to change for every
   Claude Code session, including the single-file case that is already verified
   exactly. No session on this machine has ever run a subagent, so there is no
-  fixture. Written up in `documentation/future-features.md` section 4.
+  fixture. Written up in `FUTURE.md` section 4.
 - **Advisor usage inside `message.usage.iterations`.** The array is present on
   every assistant record, always length one, always mirroring the record's own
   usage -- summing it would double every number. A second type,
   `advisor_message`, is genuinely additional usage under a *different* model.
   Zero instances exist locally, so it is deferred rather than written blind; the
   failure direction while waiting is undercounting, never invention. Written up
-  in `documentation/future-features.md` section 3.
+  in `FUTURE.md` section 3.
 - **Store format.** CSV is adequate for one session. Cross-session reporting in
   Plan 5 may want something queryable.
 - **Rate-limit windows.** Codex reports `used_percent` and `window_minutes` and
   both are already recorded, but presenting them as a usage indicator needs
   per-provider window modelling: Codex has one weekly window, Claude Code has a
-  five-hour and a weekly one. Written up in `documentation/future-features.md`,
+  five-hour and a weekly one. Written up in `FUTURE.md`,
   including the four decisions to make before any code is written.
 - **`importHistory` is built and tested but not reachable from the CLI.** This
   entry used to say `runWatch` duplicated part of it and that merging the two
@@ -864,9 +910,9 @@ Nobody has decided these. A question answered here moves to `DECISIONS.md`.
      `cost_status` value or its own column; deferred until the work starts, but
      not optional once it does.
 
-  The id defect this turned up is settled separately and lands earlier: see
-  `DECISIONS.md`, *"A Codex session id is its filename, not its path"*. It is
-  free to fix now and expensive after the first release.
+  The id defect this turned up is settled separately and lands earlier, as
+  Plan 3.8: see `DECISIONS.md`, *"A Codex session id is its filename, not its
+  path"*. It is free to fix now and expensive after the first release.
 - **Is CSV still the right store once reporting reads across sessions?** Recorded
   as settled for v1 in `DECISIONS.md`; the reporting work is what would reopen it.
 - **How should rate-limit windows be presented?** Both providers record the raw
