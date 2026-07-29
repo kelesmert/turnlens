@@ -75,8 +75,8 @@ the first turn. The result is a column showing `95.0%` under a heading of `-`:
 the percentage is correct but its window is unlabelled.
 
 This is the honest failure direction. The Python implementation hardcoded the
-headings `5 hour` and `Week` regardless of what the session reported, which is
-`known-bugs.md` P3-5. Printing `-` until the real value is known is strictly
+headings `5 hour` and `Week` regardless of what the session reported, recorded at
+the time as defect P3-5. Printing `-` until the real value is known is strictly
 better than printing a guess. It is just less useful than it could be.
 
 ### Decisions to make before implementing
@@ -247,7 +247,7 @@ else.
 
 Not one `advisor_message` iteration exists in any session on this machine. The
 project's standing rule is that behaviour is written against observed data, and
-every defect in `known-bugs.md` was found only in real sessions. Implementing
+every defect recorded against it was found only in real sessions. Implementing
 this now would mean writing, and shipping, a priced code path that has never
 seen an input -- exactly the kind of code that looks correct and silently is not.
 

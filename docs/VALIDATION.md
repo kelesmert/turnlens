@@ -369,6 +369,40 @@ The CSV filename comes from that id. A reporting pass that scans
 `archived_sessions/` naively would therefore write a second CSV for a session
 that was watched before it was archived, and count it twice.
 
+## The package, re-measured 29 July 2026
+
+Taken before Plan 4 starts, because the section describing it was written on
+27 July and several of its figures had moved since.
+
+| Measured | Then | Now |
+| --- | --- | --- |
+| `npm pack` file count | 31 | **35** |
+| Packed size | 37 kB | **47.7 kB** |
+| Unpacked size | -- | 160.5 kB |
+| Test suite | 375 across 28 files | **423 across 30 files**, all passing |
+| `turnlens` on npm | unclaimed | **still unclaimed** (`404 Not Found`) |
+
+The four files are `dist/core/env-paths.js`, `dist/core/home.js`,
+`dist/ui/banner.js` and `dist/ui/terminal.js` -- Plans 3.5, 3.6 and 3.7 adding
+modules. Nothing about packaging changed, which is why the growth needed no
+decision, only a corrected number.
+
+Two package facts checked at the same time, both against the machine rather than
+against documentation:
+
+- Node 24.18.0 bundles npm 11.16.0, so the claim that the publish job must leave
+  Node 22 behind holds. The current npm is 12.0.1, one major further on, which is
+  the case the "install the latest npm regardless" step exists for.
+- `npm trust github` is present and takes the workflow filename as `--file`. The
+  filename being part of the trust configuration is therefore literal, not a
+  convention someone might rename past.
+
+Three claims in that section were wrong rather than merely dated, and are
+corrected where they stood: the surviving `HOME` divergence no longer exists in
+the source, `package.json` still declares `>=20.0.0` against the README's 22, and
+the repository has since gained three tracked symlinks that a Windows checkout
+will materialise as plain files.
+
 ## Still unmeasured
 
 **macOS.** The findings above are expected to hold, because `os.homedir()` and

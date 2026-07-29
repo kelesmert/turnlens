@@ -281,7 +281,7 @@ Two independent sources were used, and neither is inference.
 
 **A Windows machine, measured directly** on 27 July 2026 -- Windows 10, Node
 24.18.0, both agents installed, run under PowerShell and Git Bash. Written up in
-`docs/ARCHITECTURE.md`, "Validated on Windows". Its headline result is that
+`VALIDATION.md`, "Windows, 27 July 2026". Its headline result is that
 **the paths are already right**: `~/.codex/sessions/<y>/<m>/<d>/rollout-*.jsonl`
 and `~/.claude/projects/<project>/<session>.jsonl` both hold, line endings are
 LF, and the lock is atomic. It also retired a recorded suspicion: the
@@ -485,8 +485,15 @@ a defect reporting would have walked into: `archived_sessions/` is flat while
 `sessions/` is nested, so one transcript yields two ids and would be counted
 twice.
 
-The whole of it is `src/providers/codex/sessions.ts`, its tests, and the
-discovery paragraph in `areas/providers.md`. Measured before deciding: every CSV
+The whole of it is `src/providers/codex/sessions.ts` and its tests, plus two
+paragraphs that describe the old id and would become wrong the moment it lands:
+the discovery section of `areas/providers.md`, and the `truncateEnd` trap in
+`areas/output.md`, which spells the id out as
+`<year>/<month>/<day>/rollout-<timestamp>-<uuid>` while explaining why the
+function cuts from the front. The reason survives the change -- the uuid is still
+the part worth keeping -- but the example does not.
+
+Measured before deciding: every CSV
 on this machine is Claude Code's, whose id is unaffected, and no Codex CSV has
 ever been written anywhere. So the change costs nothing today and orphans other
 people's files once the package is out -- which is the whole reason it goes
@@ -515,9 +522,10 @@ registry. So this plan is almost entirely metadata, automation and one
 irreversible button.
 
 That is up from the 31 files and 37 kB this section recorded when it was written.
-Nothing about packaging changed; Plans 3.5 and 3.7 added modules, and the figure
-is a measurement of the code rather than a target. It is restated here only so
-the number in the document is one somebody can reproduce.
+Nothing about packaging changed; Plans 3.5, 3.6 and 3.7 added modules, and the
+figure is a measurement of the code rather than a target. The re-measurement,
+including which four files are new and what else was re-checked with it, is in
+`VALIDATION.md`, "The package, re-measured 29 July 2026".
 
 ### Nothing is bundled
 
@@ -563,12 +571,18 @@ tarball -- as a side effect.
 Three things this constrains, none of them obvious:
 
 - **The publish job cannot run on Node 22.** Node 22 bundles npm 10; trusted
-  publishing needs npm 11.5.1 or later. Node 24 and 26 bundle npm 11. The publish
+  publishing needs npm 11.5.1 or later. Node 24 and 26 bundle npm 11 -- confirmed
+  on the development machine, where Node 24.18.0 carries npm 11.16.0. The publish
   job pins Node 24 and installs the latest npm regardless, because the bundled
-  minor is not something we control.
+  minor is not something we control. That "latest" is npm 12.0.1 as of 29 July
+  2026, one major above what any Node line bundles, which is the case the step
+  exists for.
 - **The workflow filename is part of the trust configuration.** npm is told that
   one named file in one named repository may publish. Renaming it later breaks
-  publishing with no obvious cause, so the name is chosen once and frozen.
+  publishing with no obvious cause, so the name is chosen once and frozen. The
+  command's own signature says so: `npm trust github [package] --file ... --repo
+  ... --allow-publish`, read from `npm trust --help` on 29 July 2026 under npm
+  11.16.0. The filename is an argument, not a convention.
 - **Provenance is requested explicitly even though it should be automatic.**
   npm's documentation says the flag is unnecessary under trusted publishing; a
   field report from January 2026 says publishing failed without it. Declaring it
@@ -626,6 +640,12 @@ it. So the plan branches: attempt it, and if it fails, publish `0.1.0` by hand
 with a one-time password, then configure trust and let every later version go
 through the workflow.
 
+The branch is still live. Re-checked 29 July 2026: the command is present locally
+under npm 11.16.0, and `turnlens` still returns `404 Not Found` from the
+registry, so the name is unclaimed and the "no page yet" case is the one this
+release will actually meet. What the command does against a name that does not
+exist remains the one thing here nobody can answer without publishing.
+
 Once the package is up, the README install section is rewritten around
 `npx turnlens@latest` -- `@latest` rather than bare `npx`, which can serve a
 cached older version.
@@ -635,8 +655,9 @@ cached older version.
 - ~~**Windows and macOS support.**~~ **Windows measured, macOS still assumed.**
   Development happens on Linux, so this was written as the step where the other
   two get exercised rather than assumed. Windows has now been exercised, ahead of
-  this plan and independently of it -- see `docs/ARCHITECTURE.md`, "Validated on
-  Windows". Every path TurnLens uses was confirmed correct there against both a
+  this plan and independently of it -- see `VALIDATION.md`, "Windows, 27 July
+  2026" and "Windows, 28 July 2026". Every path TurnLens uses was confirmed
+  correct there against both a
   filesystem probe and two live agent sessions, under PowerShell and Git Bash
   alike, so no code change is needed for session discovery to work.
 
