@@ -486,6 +486,30 @@ gate should have been on *verifying* the command, not on writing the section.
 Corrected by `0.1.1` rather than by anything cleverer, since a published version
 cannot be replaced.
 
+## The release workflow, 30 July 2026
+
+`0.1.1`, published by publishing a GitHub Release against the existing `v0.1.1`
+tag. The run was green in 32 seconds and every claim the workflow was built on
+held:
+
+- **No token was stored or used.** The runner minted an OIDC token and npm
+  accepted it. npm's own notification names the source: published "from GitHub
+  Actions ... triggered via a `release` event on git ref `refs/tags/v0.1.1`".
+- **Provenance is attached.** `npm view turnlens --json` reports
+  `dist.attestations` with `predicateType: https://slsa.dev/provenance/v1`.
+  `0.1.0`, published by hand, has none -- so the two versions are a direct
+  before-and-after of what the workflow adds.
+- **The tag guard ran and agreed.** `npm version 0.1.1` is what kept the two in
+  step: it edits `package.json`, commits, and tags that commit in one act, so
+  there was nothing for the guard to catch. That it can catch a mismatch was
+  established separately, by running its shell against five cases before any
+  version number had been spent.
+- **`latest` moved to `0.1.1`**, and the tarball carries the corrected README, so
+  the stale page `0.1.0` shipped is no longer what anyone installs.
+
+Five CI runs preceded it, all green, on every commit pushed to `main` since the
+workflow landed.
+
 ## Still unmeasured
 
 **macOS session discovery.** The findings above are expected to hold, because

@@ -495,11 +495,17 @@ the old id out while explaining why the function cuts from the front, and the
 reporting trap in `VALIDATION.md`. The reason `truncateEnd` exists survived the
 change -- the uuid is still the part worth keeping -- but its example did not.
 
-## Plan 4 — Packaging and release
+## Plan 4 — Packaging and release (complete)
 
-**Prerequisite: Plan 3.8, which is done.** Nothing in this plan changes how
-TurnLens behaves; it assumes the behaviour is already the one that ships, and now
-it is.
+**Shipped 30 July 2026. `turnlens` is on npm; `npx turnlens@latest` is the
+install.** `0.1.0` was published by hand to bring the package into existence, and
+`0.1.1` went through the release workflow -- no token stored anywhere, the runner
+proving its identity over OIDC, and an SLSA provenance attestation on the
+tarball. The tag guard reported agreement before publishing. Measured in
+`VALIDATION.md`, "The first publish" and "The release workflow".
+
+**Prerequisite: Plan 3.8, which was done first.** Nothing in this plan changed how
+TurnLens behaves; it assumed the behaviour was already the one that ships.
 
 The work is turning a repository people clone into a package people install.
 Nothing about how TurnLens runs changes; what changes is how it reaches anyone.
