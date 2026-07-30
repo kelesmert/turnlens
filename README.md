@@ -1,24 +1,37 @@
 # TurnLens
 
-Per-turn token and cost monitoring for AI coding agents.
+[![CI](https://github.com/kelesmert/turnlens/actions/workflows/ci.yml/badge.svg)](https://github.com/kelesmert/turnlens/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/turnlens.svg)](https://www.npmjs.com/package/turnlens)
+[![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Other tools tell you what a session cost, or what a day cost. TurnLens tells you
-what **one turn** cost — the prompt you just sent, priced the moment the agent
-finishes answering, with the tool calls it made and the tokens it burned.
+**Per-turn token and cost monitoring for Codex and Claude Code.**
 
+Most usage tools tell you what a session or a day cost. TurnLens tells you what
+**the prompt you just sent** cost as soon as the agent finishes together with
+the tokens it used and the tool calls it made.
+
+```text
+   # Time     Status    Prompt                     Input       Cache    Output    Reason        Total       Cost Tools Model              Effort
+--------------------------------------------------------------------------------------------------------------------------------------------------
+  13 17:19:39 completed analyze the co...      87,103   1,470,976     3,269       891    1,561,348    $1.2691     9 gpt-5.6-sol        medium
+      Tool calls: apply_patch=1, exec=4, exec_command=2, view_image=1, wait=1
+  14 17:36:16 completed 1- follow task 5 as its..      58,872   1,135,872     1,632       201    1,196,376    $0.9113     6 gpt-5.6-sol        medium
+      Tool calls: apply_patch=1, exec=3, view_image=1, wait=1
+  15 17:56:40 aborted   resarch the latest...      23,616     334,336       886       445      358,838    $0.3118     2 gpt-5.6-sol        medium
+      Tool calls: exec=1, exec_command=1
 ```
-   # Time     Status    Prompt          Input       Cache    Output    Reason        Total       Cost Tools Model              Effort
------------------------------------------------------------------------------------------------------------------------------------
-   1 16:18:27 completed 1+1?                2      46,501         3         0       46,624    $0.0245     0 claude-opus-5      low
-   2 16:19:00 aborted   summarise th...     2      46,636       130         0       46,785    $0.0267     1 claude-opus-5      low
-      Tool calls: WebSearch=1
-   3 16:19:17 completed 3+3?                2      46,653         3         0       46,899    $0.0258     0 claude-opus-5      low
-```
 
-Row 2 is a turn stopped mid tool call. It gets its own row, with its own tokens
-and its own tool call — not the next one's.
+Works with **Codex** and **Claude Code** on **Linux, macOS and Windows**. It runs
+locally, has no runtime dependencies and never modifies agent session files.
 
-Works with **Codex** and **Claude Code**, on **Linux, macOS and Windows**.
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/7ea3d9d9-c382-447b-9182-881ac40f7b91"
+    alt="TurnLens monitoring completed and interrupted AI coding-agent turns"
+    width="1280"
+  />
+</p>
 
 ## Install
 
@@ -103,13 +116,13 @@ An empty cost is always explained by the `cost_status` column. TurnLens never
 records a cost of zero for a model it could not price, because a zero joins a
 spreadsheet sum and cannot be told apart from a genuinely free turn.
 
-TurnLens's own state — the pricing cache and session locks — lives under
+TurnLens's own state the pricing cache and session locks lives under
 `~/.turnlens/`, overridable with `TURNLENS_HOME`.
 
 ## Pricing
 
-Rates come from LiteLLM's published price list. Before monitoring starts — once
-per run, never while watching — TurnLens asks whether that list has changed and
+Rates come from LiteLLM's published price list. Before monitoring starts once
+per run, never while watching TurnLens asks whether that list has changed and
 downloads it only if so, keeping it under `~/.turnlens/pricing/`. If the network
 is unreachable it falls back to that file, then to the list shipped inside the
 package, and carries on. `--offline` skips the check entirely.
@@ -131,7 +144,7 @@ npm run verify:costs -- turnlens-usage/claude-code/<session>.csv
 them.**
 
 Prompt previews are **off by default**. Turning them on writes the first 20
-characters of each prompt into the CSV — on disk, in plain text. With neither
+characters of each prompt into the CSV on disk, in plain text. With neither
 flag given you are asked once at startup and the answer defaults to no. Piped
 input is never asked and previews stay off.
 
