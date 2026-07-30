@@ -48,34 +48,21 @@ copy is right until the next flag is added.
 - **Display width is deliberately counted in code units.** A half-built Unicode
   table that is wrong in a new way is worse than an honest note.
 - **A change is not finished until the document its `update-when` names is
-  edited.** Follow `docs/CONVENTIONS.md` when writing one.
+  edited**, where such a document exists. See below.
 
 ## Documents
 
-Read the area document before changing code in that area.
+**If a `docs/` directory is present, read `docs/README.md` first.** It indexes
+the working documents and says which to open for which task: one per pipeline
+area, plus the architecture, the decisions, the measurements and the roadmap.
 
-**`docs/` is not in this repository.** It is working material kept on the
-machines that develop TurnLens, and it is gitignored, so a clone does not contain
-it and the table below will resolve to nothing there. If you are working from a
-fresh clone, the code and its comments are the whole record: read those, and do
-not assume a decision was never made just because you cannot find the file that
-recorded it.
-
-| Read | When |
-| --- | --- |
-| `docs/CONVENTIONS.md` | Before writing or editing any document |
-| `docs/areas/providers.md` | Session discovery, transcript parsing, adding a provider |
-| `docs/areas/turns.md` | Turn boundaries, abort handling, usage accumulation |
-| `docs/areas/pricing.md` | Rate resolution, cost fields, model ids that do not resolve |
-| `docs/areas/output.md` | CSV schema, terminal rendering, anything with a width |
-| `docs/areas/runtime.md` | Paths, `~/.turnlens/`, the lock, tailing |
-| `docs/ARCHITECTURE.md` | Planning a change that crosses areas, or asking what must never break |
-| `docs/DECISIONS.md` | Something looks like an omission, a defect, or a missing feature |
-| `docs/VALIDATION.md` | A figure, a platform claim, or what has not been measured |
-| `docs/ROADMAP.md` | What is planned, and which questions are still open |
-| `docs/FUTURE.md` | A candidate feature and the evidence behind it |
+That directory is not part of this repository. It is gitignored and stays on the
+machines that develop TurnLens, so a clone will not have it, and this section is
+written to be true either way. Working from a clone, the code and its comments
+are the whole record: read those, and do not conclude a decision was never made
+merely because you cannot find a file recording it.
 
 **A document tells you where to look and what was already decided. Before
 changing code, stating what is true now, or refusing a change because it was
-decided against, open the files its "Where the code lives" section names.** A
-record knows why a decision was made; it does not know what would break today.
+decided against, open the source it names.** A record knows why a decision was
+made; it does not know what would break today.

@@ -52,3 +52,6 @@ difference in any figure. Both runs are recorded in `docs/VALIDATION.md`.
 A measurement is appended to `docs/VALIDATION.md`, never written over an earlier
 one. A figure later found wrong is corrected by a new entry, because the original
 figure is part of the record.
+
+`docs/` is gitignored and is not in a clone. Where it is absent, report the
+figure and say where it was taken rather than inventing a file to put it in.
