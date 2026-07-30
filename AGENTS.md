@@ -22,10 +22,10 @@ copy is right until the next flag is added.
 
 ## Skills
 
-- `live-verification` — checking TurnLens against live agent data, or taking any
+- `live-verification`: checking TurnLens against live agent data, or taking any
   figure that will be treated as evidence.
-- `design-doc` — designing work that this session will also implement.
-- `typescript-best-practices` — writing, reviewing or refactoring `.ts`.
+- `design-doc`: designing work that this session will also implement.
+- `typescript-best-practices`: writing, reviewing or refactoring `.ts`.
 
 ## Always
 

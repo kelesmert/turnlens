@@ -8,8 +8,8 @@
 **Per-turn token and cost monitoring for Codex and Claude Code.**
 
 Most usage tools tell you what a session or a day cost. TurnLens tells you what
-**the prompt you just sent** cost as soon as the agent finishes together with
-the tokens it used and the tool calls it made.
+**the prompt you just sent** cost, as soon as the agent finishes, along with the
+tokens it used and the tool calls it made.
 
 ```text
    # Time     Status    Prompt                     Input       Cache    Output    Reason        Total       Cost Tools Model              Effort
@@ -124,13 +124,13 @@ An empty cost is always explained by the `cost_status` column. TurnLens never
 records a cost of zero for a model it could not price, because a zero joins a
 spreadsheet sum and cannot be told apart from a genuinely free turn.
 
-TurnLens's own state the pricing cache and session locks lives under
+TurnLens's own state, the pricing cache and session locks, lives under
 `~/.turnlens/`, overridable with `TURNLENS_HOME`.
 
 ## Pricing
 
-Rates come from LiteLLM's published price list. Before monitoring starts once
-per run, never while watching TurnLens asks whether that list has changed and
+Rates come from LiteLLM's published price list. Before monitoring starts, once
+per run and never while watching, TurnLens asks whether that list has changed and
 downloads it only if so, keeping it under `~/.turnlens/pricing/`. If the network
 is unreachable it falls back to that file, then to the list shipped inside the
 package, and carries on. `--offline` skips the check entirely.
@@ -152,7 +152,7 @@ npm run verify:costs -- turnlens-usage/claude-code/<session>.csv
 them.**
 
 Prompt previews are **off by default**. Turning them on writes the first 20
-characters of each prompt into the CSV on disk, in plain text. With neither
+characters of each prompt into the CSV, on disk and in plain text. With neither
 flag given you are asked once at startup and the answer defaults to no. Piped
 input is never asked and previews stay off.
 

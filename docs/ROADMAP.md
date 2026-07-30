@@ -32,7 +32,7 @@ was rewritten to the new name. That means code excerpts and quoted commands in
 those records now read `turnlens` where the machine at the time said
 `turnscope`. The dates and the reasoning are unchanged; only the name moved.
 
-## Plan 1 — Core and Codex provider (complete)
+## Plan 1: Core and Codex provider (complete)
 
 Zero-dependency TypeScript CLI that live-monitors one Codex session and records
 per-turn token usage to CSV. It fixes the Python prototype's defects
@@ -44,7 +44,7 @@ CSV being rewritten on every start, and the absence of tests and of `--help`.
 All ten tasks are done: 156 tests passed at the time, `npm run typecheck` and
 `npm run build` both exited 0, and `node dist/cli.js` ran end to end. The work
 was done on a `feat/ts-core` branch, which no longer exists -- it was merged into
-`main` and deleted when the history was rewritten for the public repository. The abort leak is verified twice over — against the committed fixture, and in a live
+`main` and deleted when the history was rewritten for the public repository. The abort leak is verified twice over, against the committed fixture and in a live
 Codex session where a deliberate Esc interrupt produced a 30,740-token `aborted`
 row followed by a separate 24,775-token `completed` row instead of one merged
 55,515-token row.
@@ -52,7 +52,7 @@ row followed by a separate 24,775-token `completed` row instead of one merged
 Cost was out of scope for Plan 1: the `estimated_cost_usd` column was written
 empty until Plan 2 filled it.
 
-## Plan 2 — Native pricing (complete)
+## Plan 2: Native pricing (complete)
 
 Removes the external `ccusage` dependency, which currently costs up to twelve
 subprocess spawns per turn (P2-2).
@@ -66,8 +66,9 @@ dependency is gone; no subprocess is spawned for pricing at all.
 - **LiteLLM is the only source**, behind an interface that admits a second one
   later. `models.dev` is not implemented; every model these providers emit is
   already in LiteLLM under its exact recorded name.
-- **Online by default, offline as a mode.** Before monitoring starts — once, never
-  during the watch — TurnLens asks LiteLLM whether its price list has changed,
+- **Online by default, offline as a mode.** Before monitoring starts, once per
+  run and never during the watch, TurnLens asks LiteLLM whether its price list
+  has changed,
   sending the stored `ETag` as `If-None-Match`. The measured answer for an
   unchanged list is `304` with zero bytes transferred, which is what makes an
   online default affordable on every run. A changed list is downloaded and
@@ -101,7 +102,7 @@ live: a 304 on the second run leaves the cache untouched, `--offline` reports th
 same version marked `(offline)`, and an unroutable source falls through in
 exactly 5.0 seconds with one notice and correct prices from cache.
 
-## Plan 3 — Claude Code provider (complete)
+## Plan 3: Claude Code provider (complete)
 
 Shipped: `src/providers/claude-code/parser.ts` and `sessions.ts`, plus the
 registry entry. **310 tests green**; `npm run typecheck` and `npm run build`
@@ -185,7 +186,7 @@ input, 136,323,205 cache read, 3,375,268 cache creation, 718,140 output,
 so the rates were never in question; this establishes that the token attribution
 agrees too.
 
-## Plan 3.5 — Pre-release cleanup (complete)
+## Plan 3.5: Pre-release cleanup (complete)
 
 `src/cli.ts` was the only source module no test imported -- one of 27 before this
 plan, 28 after it added `src/options.ts` -- and the reason was structural rather
@@ -213,7 +214,7 @@ I/O result, where extraction would buy indirection and no coverage.
 Done before v0.1.0 deliberately. A published version freezes what it contains,
 so a restructure that costs nothing today costs a version number tomorrow.
 
-## Plan 3.6 — Session discovery across platforms and configurations (complete)
+## Plan 3.6: Session discovery across platforms and configurations (complete)
 
 Shipped: `src/core/home.ts` and `src/core/env-paths.ts`, plus changes to
 `core/paths.ts`, both providers, `core/types.ts`, `options.ts` and `cli.ts`.
@@ -251,7 +252,7 @@ nothing on disk marks it -- see `docs/ARCHITECTURE.md`. A Codex session showing
 no name was correct.
 
 The design estimated 360 tests. The five extra are edge cases the behaviour lists
-implied without naming — a whitespace-only `HOME`, a variable of only commas, two
+implied without naming: a whitespace-only `HOME`, a variable of only commas, two
 entries that differ before expansion and agree after it. The estimate was built
 by counting listed behaviours, and writing them found more.
 
@@ -328,7 +329,7 @@ depth-one scan loses nothing by skipping it.
 macOS is unmeasured. Every fix above is platform-independent and lands for all
 three, but macOS carries the label "expected" until a machine says otherwise.
 
-## Plan 3.7 — Terminal width adaptation (complete)
+## Plan 3.7: Terminal width adaptation (complete)
 
 The live table was 174 characters wide and nothing measured the terminal. This
 is the fourth defect of one family, and the third reported from Windows: a
@@ -455,7 +456,7 @@ reproduces the defect the notice exists to report.
 
 macOS is unmeasured, as ever. Nothing here branches on platform.
 
-## Plan 3.8 — The Codex session id (complete)
+## Plan 3.8: The Codex session id (complete)
 
 One change, and it was the last one that had to reach the code before the package
 is published: **a Codex session id is its filename rather than its path**
@@ -495,7 +496,7 @@ the old id out while explaining why the function cuts from the front, and the
 reporting trap in `VALIDATION.md`. The reason `truncateEnd` exists survived the
 change -- the uuid is still the part worth keeping -- but its example did not.
 
-## Plan 4 — Packaging and release (complete)
+## Plan 4: Packaging and release (complete)
 
 **Shipped 30 July 2026. `turnlens` is on npm; `npx turnlens@latest` is the
 install.** `0.1.0` was published by hand to bring the package into existence, and
@@ -725,7 +726,7 @@ moved to Plan 3.5, where it belongs: it is not a release step. Merging the two
 baseline reads in `src/watch.ts` was struck because the duplicate read it
 described does not exist -- see the entry under Deferred decisions.
 
-## Plan 5 — Reporting
+## Plan 5: Reporting
 
 Aggregate daily and weekly rollups, JSON and SQLite output, statusline
 integration, better historical reconstruction.
@@ -788,8 +789,9 @@ from Codex: reporting will under-count there and over-count here unless both are
 handled deliberately.
 
 **Reading the flag is possible and has a measured cost.** The file is named after
-the client's id, not the transcript's — four of five measured filenames matched
-no transcript — so the join runs through a `cliSessionId` field inside each file.
+the client's id, not the transcript's, and four of five measured filenames
+matched no transcript, so the join runs through a `cliSessionId` field inside
+each file.
 That means opening every file in a second directory tree and depending on a
 schema nobody documents, which covers only sessions run through that client. For
 watching, the answer is no: it would hide a session the user can still write to.
