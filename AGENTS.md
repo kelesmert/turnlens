@@ -54,6 +54,13 @@ copy is right until the next flag is added.
 
 Read the area document before changing code in that area.
 
+**`docs/` is not in this repository.** It is working material kept on the
+machines that develop TurnLens, and it is gitignored, so a clone does not contain
+it and the table below will resolve to nothing there. If you are working from a
+fresh clone, the code and its comments are the whole record: read those, and do
+not assume a decision was never made just because you cannot find the file that
+recorded it.
+
 | Read | When |
 | --- | --- |
 | `docs/CONVENTIONS.md` | Before writing or editing any document |
