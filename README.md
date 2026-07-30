@@ -64,6 +64,14 @@ node dist/cli.js --help
 
 Run it, pick a session, leave it running in a second terminal while you work.
 
+For a one-off run without installing globally:
+
+```bash
+npx turnlens@latest --provider claude-code
+```
+
+If installed globally:
+
 ```bash
 turnlens --provider claude-code
 ```
