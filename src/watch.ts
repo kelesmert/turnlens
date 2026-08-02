@@ -3,6 +3,8 @@ import { appendTurn, openCsv, turnRowKey } from "./core/store/csv.js";
 import { wrapWords } from "./core/text.js";
 import { byteLength, followLines, readCompleteLines } from "./core/tail.js";
 import { TurnAssembler } from "./core/turn-assembler.js";
+import { addUsage, emptyUsage } from "./core/usage.js";
+import { formatHistoryBlock } from "./ui/history.js";
 import {
   FULL_TABLE_WIDTH,
   MINIMUM_TABLE_WIDTH,
@@ -11,6 +13,7 @@ import {
   selectLayout,
 } from "./ui/live-table.js";
 import { terminalWidth } from "./ui/terminal.js";
+import type { HistoryTotals } from "./ui/history.js";
 import type { Layout } from "./ui/live-table.js";
 import type { NormalizedTurn, ProviderAdapter, SessionRef, TokenUsage } from "./core/types.js";
 import type { PricingResolver } from "./pricing/types.js";
@@ -106,6 +109,7 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   const write = options.write ?? ((line: string) => process.stdout.write(`${line}\n`));
   const startByte = await byteLength(options.session.path);
   const baseline = await readBaseline(options, startByte);
+  const history = await readHistory(options, startByte);
   const recorder = await createRecorder(options, baseline === undefined ? {} : { baseline });
 
   // Measured once, here, and never again: the layout it produces is handed to
@@ -114,6 +118,7 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   const width = options.terminalWidth ?? terminalWidth(process.stdout);
   const layout = selectLayout(width);
 
+  for (const line of formatHistoryBlock(history, width)) write(line);
   for (const line of describeNarrowing(layout, width)) write(line);
   for (const line of formatTableHeader(layout)) write(line);
 
@@ -185,6 +190,52 @@ async function createRecorder(
     recordedKeys: new Set(state.recordedKeys),
     turnNumber: state.maxTurnNumber,
   };
+}
+
+/**
+ * Prices the turns the session closed before monitoring started.
+ *
+ * Read for every provider, unlike the baseline below, because the figure is for
+ * the user rather than for the arithmetic: it answers what this session has cost
+ * so far, which is the question the live table cannot answer on its own.
+ *
+ * **This is a second pass over the prefix for cumulative providers,** which
+ * already read it for the baseline. Merging the two would mean seeding the
+ * assembler from what this pass ends up holding, and the two candidate values
+ * differ: `readBaseline` returns the last cumulative counter the file reported,
+ * while an assembler's own baseline counts only the turns it closed. They come
+ * apart exactly when the prefix ends mid-turn, and which one should seed the
+ * watch is a behavioural question with a live turn's cost hanging on it. Not one
+ * to settle as a side effect of adding a summary.
+ */
+async function readHistory(
+  options: WatchOptions,
+  stopAtByte: number,
+): Promise<HistoryTotals> {
+  let turns = 0;
+  let unpricedTurns = 0;
+  let pricedTurns = 0;
+  let costUsd = 0;
+  let usage = emptyUsage();
+
+  for await (const turn of replaySession({
+    session: options.session,
+    adapter: options.adapter,
+    pricing: options.pricing,
+    stopAtByte,
+  })) {
+    turns += 1;
+    usage = addUsage(usage, turn.usage);
+    if (turn.costUsd === undefined) unpricedTurns += 1;
+    else {
+      costUsd += turn.costUsd;
+      pricedTurns += 1;
+    }
+  }
+
+  // Absent rather than zero when nothing could be priced. A zero would read as a
+  // free session and would join a sum as one.
+  return { turns, usage, unpricedTurns, ...(pricedTurns === 0 ? {} : { costUsd }) };
 }
 
 /**

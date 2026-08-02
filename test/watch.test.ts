@@ -210,6 +210,60 @@ describe("runWatch over a session that is still being written", () => {
     expect(statuses).toContain("aborted");
     expect(printed.join("\n")).toContain("aborted");
   });
+
+  /**
+   * The history block answers what the session has cost so far, which the live
+   * table cannot: the table only ever holds turns that closed after monitoring
+   * started. Asserted here rather than in `history.test.ts` because what is
+   * being checked is that `runWatch` prices the prefix at all, not how the
+   * block reads.
+   */
+  it("prices the turns that closed before monitoring started", async () => {
+    const records = (await readFile(FIXTURE, "utf8")).split("\n").filter((l) => l.trim() !== "");
+    const dir = await mkdtemp(join(tmpdir(), "turnlens-history-"));
+    const sessionPath = join(dir, "growing.jsonl");
+
+    await writeFile(sessionPath, `${records.slice(0, SPLIT_AFTER_RECORD).join("\n")}\n`, "utf8");
+
+    const controller = new AbortController();
+    const printed: string[] = [];
+    controller.abort();
+    await runWatch({
+      session: { ...SESSION, path: sessionPath },
+      adapter: createCodexAdapter(),
+      csvPath: join(dir, "session.csv"),
+      includePromptPreview: false,
+      pricing: await offlineResolver(),
+      signal: controller.signal,
+      write: (line) => printed.push(line),
+    });
+
+    const block = printed.join("\n");
+
+    expect(block).toMatch(/History: \d+ turns/u);
+    expect(block).toMatch(/today's rates/u);
+  });
+
+  it("says nothing about history for a session with nothing closed yet", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "turnlens-history-empty-"));
+    const sessionPath = join(dir, "empty.jsonl");
+    await writeFile(sessionPath, "", "utf8");
+
+    const controller = new AbortController();
+    const printed: string[] = [];
+    controller.abort();
+    await runWatch({
+      session: { ...SESSION, path: sessionPath },
+      adapter: createCodexAdapter(),
+      csvPath: join(dir, "session.csv"),
+      includePromptPreview: false,
+      pricing: await offlineResolver(),
+      signal: controller.signal,
+      write: (line) => printed.push(line),
+    });
+
+    expect(printed.join("\n")).not.toContain("History:");
+  });
 });
 
 describe("describeNarrowing", () => {
@@ -294,10 +348,11 @@ describe("runWatch in a narrow terminal", () => {
     await watching;
 
     // The notice may take more than one line, so the rule locates the header
-    // rather than a fixed index.
+    // rather than a fixed index. The history block precedes the notice, so the
+    // notice is located by its content rather than by position too.
     const rule = printed.findIndex((line) => /^-+$/u.test(line));
 
-    expect(printed[0]).toContain("100");
+    expect(printed.slice(0, rule).join("\n")).toContain("100");
     expect(rule).toBeGreaterThan(0);
     expect(printed[rule - 1]).toHaveLength(selectLayout(100).width);
 
