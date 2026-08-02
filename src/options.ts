@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import { toFiniteInt } from "./core/numbers.js";
 import { AGENT_NAMES, resolveAgentName } from "./providers/registry.js";
+import { parseBound } from "./report/window.js";
 import { decidePromptPreview } from "./ui/prompts.js";
 import type { SessionRef } from "./core/types.js";
 import type { ProviderId } from "./providers/registry.js";
@@ -141,8 +142,10 @@ export function parseCliOptions(argv: readonly string[], env: CliEnvironment): C
     grouping: grammar.grouping,
     ...(values.id === undefined ? {} : { sessionIdQuery: values.id }),
     ...(grammar.sessionBreakdown === undefined ? {} : { sessionBreakdown: grammar.sessionBreakdown }),
-    ...(values.since === undefined ? {} : { since: values.since }),
-    ...(values.until === undefined ? {} : { until: values.until }),
+    // Normalised here rather than where the report is built, so a date nobody
+    // can read fails while the user is still at the prompt.
+    ...(values.since === undefined ? {} : { since: parseBound(values.since, "--since") }),
+    ...(values.until === undefined ? {} : { until: parseBound(values.until, "--until") }),
     json: values.json === true,
     compact: values.compact === true,
     previewChoice,

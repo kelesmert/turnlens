@@ -120,6 +120,21 @@ describe("the positional grammar", () => {
     expect(() => parseCliOptions(["claude", "--compact"], TTY)).toThrow(/report/u);
   });
 
+  it("normalises the window bounds, so the report never sees two spellings", () => {
+    expect(parseCliOptions(["report", "--since", "20260701", "--until", "2026-07-31"], TTY)).toMatchObject(
+      { since: "2026-07-01", until: "2026-07-31" },
+    );
+  });
+
+  /**
+   * Rejected here, before a session is listed, which is the rule this module
+   * already follows: a run that cannot start must fail while the user is still
+   * at the prompt.
+   */
+  it("rejects an unreadable window bound before anything is listed", () => {
+    expect(() => parseCliOptions(["report", "--since", "last week"], TTY)).toThrow(/YYYY-MM-DD/u);
+  });
+
   it("reports which help level was asked for", () => {
     expect(parseCliOptions(["--help"], TTY).helpLevel).toBe("root");
     expect(parseCliOptions(["claude", "--help"], TTY).helpLevel).toBe("agent");
