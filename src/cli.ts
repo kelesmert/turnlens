@@ -5,7 +5,7 @@ import { resolveSessionCsvPath, resolveSessionLockDir } from "./core/paths.js";
 import { chooseSession, describeMissingSessions, parseCliOptions } from "./options.js";
 import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
-import { PROVIDER_IDS, getAdapter } from "./providers/registry.js";
+import { AGENT_NAMES, PROVIDER_IDS, getAdapter } from "./providers/registry.js";
 import { formatSessionBanner } from "./ui/banner.js";
 import { formatSessionListing } from "./ui/live-table.js";
 import { terminalWidth } from "./ui/terminal.js";
@@ -79,6 +79,13 @@ async function main(): Promise<void> {
     cachePath,
     notify: (line) => write([line]),
   });
+
+  // Temporary, until Task 11 of the reporting plan adds the agent listing that
+  // bare `turnlens` is meant to print. Until then, naming the agent is required
+  // rather than silently defaulting to one the user did not choose.
+  if (providerId === undefined) {
+    throw new Error(`Name an agent: ${AGENT_NAMES.map((name) => `turnlens ${name}`).join(", ")}`);
+  }
 
   const adapter = getAdapter(providerId);
   const sessions = (await adapter.listSessions()).slice(0, SESSION_LIST_LIMIT);

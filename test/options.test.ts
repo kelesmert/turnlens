@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { chooseSession, describeMissingSessions, parseCliOptions } from "../src/options.js";
+import { resolveAgentName } from "../src/providers/registry.js";
 import type { SessionRef } from "../src/core/types.js";
 
 /** A terminal exists, so the CLI is allowed to ask a question. */
@@ -7,26 +8,147 @@ const TTY = { interactive: true } as const;
 /** stdin is a pipe: asking would eat a line meant for the session selection. */
 const PIPED = { interactive: false } as const;
 
-describe("parseCliOptions", () => {
-  it("defaults to codex, online, no refresh, and asking about previews", () => {
-    expect(parseCliOptions([], TTY)).toEqual({
+describe("resolveAgentName", () => {
+  it("maps the typed name to the internal id", () => {
+    expect(resolveAgentName("claude")).toBe("claude-code");
+    expect(resolveAgentName("codex")).toBe("codex");
+  });
+
+  it("still accepts the internal id, which appears in CSV filenames", () => {
+    expect(resolveAgentName("claude-code")).toBe("claude-code");
+  });
+
+  it("rejects anything else", () => {
+    expect(resolveAgentName("gemini")).toBeUndefined();
+  });
+
+  /**
+   * Not merely equal ids: the whole options object must match, so that no code
+   * downstream of the parser has anything to branch on. `claude` is what a
+   * person types and `claude-code` is what the id has always been, and the two
+   * become indistinguishable here or nowhere.
+   */
+  it("makes the two spellings indistinguishable after parsing", () => {
+    expect(parseCliOptions(["claude", "report", "session"], TTY)).toEqual(
+      parseCliOptions(["claude-code", "report", "session"], TTY),
+    );
+  });
+});
+
+describe("the positional grammar", () => {
+  it("defaults to watching, with no agent chosen", () => {
+    const options = parseCliOptions([], TTY);
+
+    expect(options.mode).toBe("watch");
+    expect(options.providerId).toBeUndefined();
+  });
+
+  it("reads an agent name as the agent to watch", () => {
+    expect(parseCliOptions(["claude"], TTY)).toMatchObject({
+      mode: "watch",
+      providerId: "claude-code",
+    });
+    expect(parseCliOptions(["codex"], TTY)).toMatchObject({
+      mode: "watch",
       providerId: "codex",
+    });
+  });
+
+  it("reads report with no agent as every agent", () => {
+    const options = parseCliOptions(["report"], TTY);
+
+    expect(options).toMatchObject({ mode: "report", grouping: "daily" });
+    // Absent rather than set to undefined, which is how every optional field in
+    // this module is spelled, so a consumer's `in` check means what it says.
+    expect("providerId" in options).toBe(false);
+  });
+
+  it("defaults report to daily", () => {
+    expect(parseCliOptions(["claude", "report"], TTY).grouping).toBe("daily");
+  });
+
+  it("reads each grouping word", () => {
+    for (const word of ["daily", "weekly", "monthly", "session"] as const) {
+      expect(parseCliOptions(["claude", "report", word], TTY).grouping).toBe(word);
+    }
+  });
+
+  it("reads a session breakdown", () => {
+    expect(
+      parseCliOptions(["claude", "report", "session", "--id", "a3f2", "daily"], TTY),
+    ).toMatchObject({
+      grouping: "session",
+      sessionIdQuery: "a3f2",
+      sessionBreakdown: "daily",
+    });
+  });
+
+  it("accepts --id in watch mode", () => {
+    expect(parseCliOptions(["claude", "--id", "a3f2"], TTY)).toMatchObject({
+      mode: "watch",
+      sessionIdQuery: "a3f2",
+    });
+  });
+
+  it("rejects a grouping word without report", () => {
+    expect(() => parseCliOptions(["claude", "daily"], TTY)).toThrow(/report/u);
+  });
+
+  it("rejects an unknown grouping word by naming the valid ones", () => {
+    expect(() => parseCliOptions(["claude", "report", "dayly"], TTY)).toThrow(/weekly/u);
+  });
+
+  it("rejects --id in report mode without the word session", () => {
+    expect(() => parseCliOptions(["report", "--id", "a3f2"], TTY)).toThrow(/session/u);
+  });
+
+  it("rejects an unfiltered two-word grouping by naming --id", () => {
+    expect(() => parseCliOptions(["claude", "report", "session", "daily"], TTY)).toThrow(/--id/u);
+  });
+
+  it("rejects two grouping words that are not session and daily", () => {
+    expect(() => parseCliOptions(["claude", "report", "weekly", "session"], TTY)).toThrow();
+  });
+
+  it("rejects an unknown agent", () => {
+    expect(() => parseCliOptions(["gemini"], TTY)).toThrow(/claude/u);
+  });
+
+  it("rejects report-only flags in watch mode", () => {
+    expect(() => parseCliOptions(["claude", "--json"], TTY)).toThrow(/report/u);
+    expect(() => parseCliOptions(["claude", "--since", "2026-07-01"], TTY)).toThrow(/report/u);
+    expect(() => parseCliOptions(["claude", "--compact"], TTY)).toThrow(/report/u);
+  });
+
+  it("reports which help level was asked for", () => {
+    expect(parseCliOptions(["--help"], TTY).helpLevel).toBe("root");
+    expect(parseCliOptions(["claude", "--help"], TTY).helpLevel).toBe("agent");
+    expect(parseCliOptions(["claude", "report", "--help"], TTY).helpLevel).toBe("report");
+  });
+});
+
+describe("parseCliOptions", () => {
+  it("defaults to online, no refresh, and asking about previews", () => {
+    expect(parseCliOptions([], TTY)).toEqual({
+      mode: "watch",
+      grouping: "daily",
+      json: false,
+      compact: false,
       previewChoice: "ask",
       offline: false,
       refreshPricing: false,
       help: false,
+      helpLevel: "root",
     });
   });
 
-  it("accepts every supported provider", () => {
-    expect(parseCliOptions(["--provider", "codex"], TTY).providerId).toBe("codex");
-    expect(parseCliOptions(["--provider", "claude-code"], TTY).providerId).toBe("claude-code");
-  });
-
-  it("names the supported providers when given one it does not know", () => {
-    expect(() => parseCliOptions(["--provider", "gemini"], TTY)).toThrow(
-      /Unknown provider: gemini[\s\S]*codex, claude-code/u,
-    );
+  /**
+   * The flag was public from 30 July until this plan removed it, so its removal
+   * is asserted rather than merely untested. The agent is a positional now.
+   */
+  it("no longer accepts --provider", () => {
+    expect(() => parseCliOptions(["--provider", "codex"], TTY)).toThrow();
+    expect(() => parseCliOptions(["--provider", "claude-code"], TTY)).toThrow();
   });
 
   /**
@@ -61,9 +183,11 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["--help"], TTY).help).toBe(true);
   });
 
-  // A session id typed without its flag is a mistake worth naming, not one to
-  // absorb silently and then monitor something the user did not ask for.
-  it("refuses a positional argument rather than ignoring it", () => {
+  // A session id typed where an agent name belongs is a mistake worth naming,
+  // not one to absorb silently and then monitor something nobody asked for.
+  // Positionals are meaningful now, so the rejection comes from the grammar
+  // rather than from refusing positionals outright.
+  it("refuses a positional it cannot read rather than ignoring it", () => {
     expect(() => parseCliOptions(["some-session-id"], TTY)).toThrow();
   });
 });
