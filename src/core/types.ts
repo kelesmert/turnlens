@@ -136,7 +136,19 @@ export interface ProviderAdapter {
    * tell a user which one they have.
    */
   readonly roots: readonly string[];
+  /** Sessions a user may choose to follow. Archived work is excluded. */
   listSessions(): Promise<readonly SessionRef[]>;
+  /**
+   * Every session a total must account for, archived work included.
+   *
+   * Two methods rather than one flag on the interface, because the two answers
+   * are different facts rather than one fact filtered. A listing offered for
+   * selection must contain only sessions that can still be followed; a total
+   * that leaves out spent money is wrong. Codex archives by moving a file, so
+   * these differ there. Claude Code archives without moving anything, so they
+   * are the same call.
+   */
+  listSessionsForReport(): Promise<readonly SessionRef[]>;
   /**
    * Converts one raw session record into zero or more events.
    *

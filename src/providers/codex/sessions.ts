@@ -8,7 +8,17 @@ import type { ProviderAdapter, SessionRef } from "../../core/types.js";
 
 export interface CodexPaths {
   readonly sessionsRoot: string;
+  /**
+   * Where Codex moves a session the user archived, keeping the same
+   * `rollout-*.jsonl` format but no date directories above it.
+   */
+  readonly archivedSessionsRoot: string;
   readonly sessionIndexFile: string;
+}
+
+/** Whether a listing is for watching, which excludes archived work, or reporting. */
+export interface ListingScope {
+  readonly includeArchived?: boolean;
 }
 
 const SESSION_UUID_PATTERN =
@@ -37,6 +47,7 @@ export function resolveCodexPaths(env: NodeJS.ProcessEnv = process.env): CodexPa
 
   return {
     sessionsRoot: join(home, "sessions"),
+    archivedSessionsRoot: join(home, "archived_sessions"),
     sessionIndexFile: join(home, "session_index.jsonl"),
   };
 }
@@ -94,12 +105,24 @@ export async function loadSessionNames(
  * `archived_sessions/` once it is archived. A path-derived id would give one
  * session two ids, and the CSV filename follows the id, so archiving it would
  * start a second file and count it twice.
+ *
+ * **Archived sessions are excluded unless asked for.** For watching, excluding
+ * them is correct: an archived session has ended and cannot be followed, so
+ * offering it would present a choice that does nothing. For reporting the same
+ * omission is a silent undercount of money that was spent, measured on the
+ * development machine as five archived transcripts against twenty live.
  */
 export async function listAllSessionsNewestFirst(
   paths: CodexPaths,
+  scope: ListingScope = {},
 ): Promise<readonly SessionRef[]> {
   const names = await loadSessionNames(paths.sessionIndexFile);
-  const files = await collectJsonlFiles(paths.sessionsRoot);
+  const files = [
+    ...(await collectJsonlFiles(paths.sessionsRoot)),
+    ...(scope.includeArchived === true
+      ? await collectJsonlFiles(paths.archivedSessionsRoot)
+      : []),
+  ];
   const refs: SessionRef[] = [];
 
   for (const path of files) {
@@ -132,6 +155,7 @@ export function createCodexAdapter(paths: CodexPaths = resolveCodexPaths()): Pro
     usageModel: CODEX_USAGE_MODEL,
     roots: [paths.sessionsRoot],
     listSessions: () => listAllSessionsNewestFirst(paths),
+    listSessionsForReport: () => listAllSessionsNewestFirst(paths, { includeArchived: true }),
     parseRecord: parseCodexRecord,
   };
 }

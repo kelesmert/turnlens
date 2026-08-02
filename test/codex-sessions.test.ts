@@ -124,6 +124,94 @@ describe("loadSessionNames", () => {
   });
 });
 
+/**
+ * Codex nests live transcripts under a date and keeps archived ones flat, so a
+ * fixture that covers archiving has to write both shapes.
+ */
+async function writeCodexHome(files: {
+  readonly sessions: readonly string[];
+  readonly archived: readonly string[];
+}): Promise<string> {
+  const home = await fakeCodexHome();
+  const dayDir = join(home, "sessions", "2026", "08", "01");
+  const archivedDir = join(home, "archived_sessions");
+  await mkdir(dayDir, { recursive: true });
+  await mkdir(archivedDir, { recursive: true });
+
+  for (const name of files.sessions) await writeFile(join(dayDir, name), "", "utf8");
+  for (const name of files.archived) await writeFile(join(archivedDir, name), "", "utf8");
+
+  return home;
+}
+
+const LIVE = "rollout-2026-08-01T10-00-00-aaaaaaaa-0000-0000-0000-000000000001.jsonl";
+const ARCHIVED = "rollout-2026-07-01T10-00-00-bbbbbbbb-0000-0000-0000-000000000002.jsonl";
+
+describe("archived Codex sessions", () => {
+  /**
+   * Not reading them is correct for watching. An archived session has ended and
+   * cannot be followed, so listing it would offer a choice that does nothing.
+   */
+  it("leaves archived sessions out of the listing used for watching", async () => {
+    const home = await writeCodexHome({ sessions: [LIVE], archived: [ARCHIVED] });
+
+    const refs = await listAllSessionsNewestFirst(resolveCodexPaths({ CODEX_HOME: home }));
+
+    expect(refs).toHaveLength(1);
+    expect(refs[0]?.sessionId).toBe(LIVE.replace(".jsonl", ""));
+  });
+
+  /**
+   * For reporting the same omission is a silent undercount of money that was
+   * spent. Measured on the development machine: five archived against twenty
+   * live, a fifth of the history.
+   */
+  it("includes archived sessions when reporting asks for them", async () => {
+    const home = await writeCodexHome({ sessions: [LIVE], archived: [ARCHIVED] });
+
+    const refs = await listAllSessionsNewestFirst(resolveCodexPaths({ CODEX_HOME: home }), {
+      includeArchived: true,
+    });
+
+    expect(refs).toHaveLength(2);
+  });
+
+  /**
+   * The id is the filename, never the path, so archiving a session cannot give
+   * it a second id and cannot make one session count twice.
+   */
+  it("gives an archived session the same id it had before it was archived", async () => {
+    const home = await writeCodexHome({ sessions: [], archived: [ARCHIVED] });
+
+    const refs = await listAllSessionsNewestFirst(resolveCodexPaths({ CODEX_HOME: home }), {
+      includeArchived: true,
+    });
+
+    expect(refs[0]?.sessionId).toBe(ARCHIVED.replace(".jsonl", ""));
+  });
+
+  it("survives a home with no archived directory at all", async () => {
+    const home = await fakeCodexHome();
+    const dayDir = join(home, "sessions", "2026", "08", "01");
+    await mkdir(dayDir, { recursive: true });
+    await writeFile(join(dayDir, LIVE), "", "utf8");
+
+    const refs = await listAllSessionsNewestFirst(resolveCodexPaths({ CODEX_HOME: home }), {
+      includeArchived: true,
+    });
+
+    expect(refs).toHaveLength(1);
+  });
+
+  it("gives the adapter a report listing that includes them", async () => {
+    const home = await writeCodexHome({ sessions: [LIVE], archived: [ARCHIVED] });
+    const adapter = createCodexAdapter(resolveCodexPaths({ CODEX_HOME: home }));
+
+    expect(await adapter.listSessions()).toHaveLength(1);
+    expect(await adapter.listSessionsForReport()).toHaveLength(2);
+  });
+});
+
 describe("listAllSessionsNewestFirst", () => {
   it("orders sessions by last activity and resolves names and ids", async () => {
     const home = await fakeCodexHome();

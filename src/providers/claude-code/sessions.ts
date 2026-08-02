@@ -109,6 +109,13 @@ export function createClaudeCodeAdapter(
     usageModel: CLAUDE_CODE_USAGE_MODEL,
     roots: paths.projectRoots,
     listSessions: () => listAllSessionsNewestFirst(paths),
+    // The same call, deliberately. Claude Code archives a conversation without
+    // moving its transcript, so an archived session is already in this listing
+    // and already in every total. The only marker lives in the desktop client's
+    // own store, behind an undocumented schema and a `cliSessionId` join, and
+    // nothing in the report needs it: the total counts archived work either way,
+    // and the coverage line does not itemise it.
+    listSessionsForReport: () => listAllSessionsNewestFirst(paths),
     parseRecord,
   };
 }
