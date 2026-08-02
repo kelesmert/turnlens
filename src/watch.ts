@@ -1,8 +1,8 @@
+import { normaliseTurn, parseJson, replaySession, resolveTurnId } from "./core/replay.js";
 import { appendTurn, openCsv, turnRowKey } from "./core/store/csv.js";
 import { wrapWords } from "./core/text.js";
 import { byteLength, followLines, readCompleteLines } from "./core/tail.js";
 import { TurnAssembler } from "./core/turn-assembler.js";
-import { computeTurnCost } from "./pricing/cost.js";
 import {
   FULL_TABLE_WIDTH,
   MINIMUM_TABLE_WIDTH,
@@ -11,7 +11,6 @@ import {
   selectLayout,
 } from "./ui/live-table.js";
 import { terminalWidth } from "./ui/terminal.js";
-import type { AssembledTurn } from "./core/turn-assembler.js";
 import type { Layout } from "./ui/live-table.js";
 import type { NormalizedTurn, ProviderAdapter, SessionRef, TokenUsage } from "./core/types.js";
 import type { PricingResolver } from "./pricing/types.js";
@@ -59,20 +58,37 @@ interface Recorder {
  * a recorded row has that a row reconstructed from the transcript does not. Rows
  * added here would therefore carry nothing the reporting command cannot rebuild.
  *
- * It stays because it is the batch path through the pipeline -- one file in,
- * turns out -- which is what reporting needs, and because the fixture tests that
- * lock the arithmetic drive it rather than `runWatch`. Reporting will reuse the
- * traversal without the CSV write; its own difference is that it chooses the
- * files instead of being handed one.
+ * It stays because the fixture tests that lock the arithmetic drive it rather
+ * than `runWatch`. What it no longer owns is the traversal: `replaySession` in
+ * `core/replay.ts` is the batch path, and this is that path plus a CSV. The only
+ * things left here are the three the store needs, which is deduping by turn id,
+ * continuing the CSV's turn numbering, and appending.
  */
 export async function importHistory(
   options: WatchOptions & { readonly stopAtByte: number },
 ): Promise<number> {
-  const recorder = await createRecorder(options, {});
+  const state = await openCsv(options.csvPath);
+  const recordedKeys = new Set(state.recordedKeys);
+  let turnNumber = state.maxTurnNumber;
 
   let recorded = 0;
-  for await (const line of readCompleteLines(options.session.path, options.stopAtByte)) {
-    recorded += await consumeLine(line, options, recorder);
+  for await (const replayed of replaySession({
+    session: options.session,
+    adapter: options.adapter,
+    pricing: options.pricing,
+    stopAtByte: options.stopAtByte,
+    includePromptPreview: options.includePromptPreview,
+  })) {
+    const key = turnRowKey(replayed);
+    if (recordedKeys.has(key)) continue;
+    recordedKeys.add(key);
+
+    // Renumbered rather than taken from the replay. Replay counts within the
+    // transcript; the CSV counts within itself, and an import into a file that
+    // already holds rows continues that file's sequence.
+    turnNumber += 1;
+    await appendTurn(options.csvPath, { ...replayed, turnNumber });
+    recorded += 1;
   }
 
   return recorded;
@@ -223,7 +239,13 @@ async function consumeLine(
     recorder.recordedKeys.add(key);
 
     recorder.turnNumber += 1;
-    const turn = normalise(assembled, turnId, recorder.turnNumber, options);
+    const turn = normaliseTurn({
+      assembled,
+      turnNumber: recorder.turnNumber,
+      session: options.session,
+      provider: options.adapter.id,
+      pricing: options.pricing,
+    });
 
     await appendTurn(options.csvPath, turn);
     recorded += 1;
@@ -235,59 +257,3 @@ async function consumeLine(
   return recorded;
 }
 
-/**
- * Turns an assembled turn into a recordable row, including its cost.
- *
- * Stays synchronous: the resolver loaded every layer before monitoring started,
- * so this is a map lookup. Pricing happens here rather than in the assembler so
- * the assembler stays pure and clock-free.
- */
-function normalise(
-  assembled: AssembledTurn,
-  turnId: string,
-  turnNumber: number,
-  options: WatchOptions,
-): NormalizedTurn {
-  const lookup = options.pricing.lookup(assembled.model);
-  const cost = computeTurnCost(assembled.usage, lookup.pricing);
-
-  return {
-    provider: options.adapter.id,
-    sessionId: options.session.sessionId,
-    sessionName: options.session.sessionName,
-    turnNumber,
-    turnId,
-    status: assembled.status,
-    at: assembled.at,
-    usage: assembled.usage,
-    toolCalls: assembled.toolCalls,
-    model: assembled.model,
-    reasoningEffort: assembled.reasoningEffort,
-    promptPreview: assembled.promptPreview,
-    costStatus: cost.status,
-    pricingVersion: lookup.version,
-    ...(cost.amountUsd === undefined ? {} : { costUsd: cost.amountUsd }),
-    ...(assembled.durationMs === undefined ? {} : { durationMs: assembled.durationMs }),
-    ...(assembled.rateLimits === undefined ? {} : { rateLimits: assembled.rateLimits }),
-  };
-}
-
-/**
- * The provider's turn id, or a stable substitute when it reported none.
- *
- * Derived only from the session, the closing timestamp and the token total, so
- * re-importing the same history produces the same id and the turn is recognised
- * as already recorded. A random id would duplicate the row on every import.
- */
-function resolveTurnId(assembled: AssembledTurn, sessionId: string): string {
-  if (assembled.turnId !== undefined) return assembled.turnId;
-  return `synthetic-${sessionId}-${assembled.at}-${assembled.usage.total}`;
-}
-
-function parseJson(line: string): unknown {
-  try {
-    return JSON.parse(line) as unknown;
-  } catch {
-    return undefined;
-  }
-}
