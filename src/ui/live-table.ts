@@ -443,6 +443,45 @@ export const MINIMUM_SESSION_LISTING_WIDTH =
  * the column beside it. The full id stays available in the startup banner and in
  * the CSV filename; nothing here is the only copy.
  */
+/** One row of the agent listing: what to type, and what it would find. */
+export interface AgentEntry {
+  readonly name: string;
+  readonly sessions: number;
+}
+
+/**
+ * Lists the agents to choose between, with how much each one has.
+ *
+ * **An agent with no sessions is listed and stays selectable.** Choosing it is
+ * what produces `describeMissingSessions` and its list of searched directories,
+ * and that message is the only diagnosis available to somebody whose
+ * `CLAUDE_CONFIG_DIR` points at the wrong place. Hiding the agent would hide the
+ * diagnosis from the one user who cannot do without it.
+ */
+export function formatAgentListing(
+  agents: readonly AgentEntry[],
+  availableWidth?: number,
+): readonly string[] {
+  const ceiling = availableWidth ?? Number.POSITIVE_INFINITY;
+  const nameWidth = Math.max(...agents.map((agent) => agent.name.length));
+
+  const rows = agents.map((agent, index) => {
+    const count =
+      agent.sessions === 0
+        ? "none found"
+        : `${agent.sessions.toLocaleString("en-US")} session${agent.sessions === 1 ? "" : "s"}`;
+    const row = [
+      String(index + 1).padStart(INDEX_WIDTH),
+      agent.name.padEnd(nameWidth),
+      count,
+    ].join(LISTING_GAP);
+
+    return truncate(row, ceiling);
+  });
+
+  return ["", truncate("Agents found on this machine", ceiling), ...rows];
+}
+
 export function formatSessionListing(
   sessions: readonly SessionRef[],
   availableWidth?: number,

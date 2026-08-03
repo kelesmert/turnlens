@@ -188,6 +188,22 @@ describe("formatReport, rows", () => {
     expect(text).not.toMatch(/\$0 /u);
   });
 
+  /**
+   * The inverse of the rule the cost column follows. A token count is never
+   * unknown, so blanking a zero would make a known figure look unknowable. Codex
+   * reports no cache-creation tokens, and that column reading zero throughout is
+   * the truth about Codex.
+   */
+  it("prints a token count of zero rather than blanking it", () => {
+    const zeroed = {
+      ...fixture(),
+      buckets: [bucket({ usage: { ...USAGE, cacheCreation5m: 0, cacheCreation1h: 0 } })],
+    };
+    const row = formatReport(zeroed, WIDE)[2] ?? "";
+
+    expect(row).toMatch(/\s0\s/u);
+  });
+
   it("prints a total row under the periods", () => {
     const lines = formatReport(fixture(), WIDE);
 

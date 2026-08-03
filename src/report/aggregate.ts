@@ -4,6 +4,14 @@ import type { NormalizedTurn, TokenUsage } from "../core/types.js";
 /** One row of a report: everything that fell under one label, summed. */
 export interface Bucket {
   readonly label: string;
+  /**
+   * The identity a reader copies to name this row again, when it has one.
+   *
+   * Kept apart from the label because the label is truncatable and this is not. A
+   * name cut short is still a recognisable name; an id cut short is a string that
+   * resolves to nothing.
+   */
+  readonly id?: string;
   /** Set only when a report spans more than one agent, which turns on nesting. */
   readonly provider?: string;
   readonly turns: number;

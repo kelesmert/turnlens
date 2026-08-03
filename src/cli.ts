@@ -5,45 +5,24 @@ import { resolveSessionCsvPath, resolveSessionLockDir } from "./core/paths.js";
 import { chooseSession, describeMissingSessions, parseCliOptions } from "./options.js";
 import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
-import { AGENT_NAMES, PROVIDER_IDS, getAdapter } from "./providers/registry.js";
+import { AGENT_NAMES, countSessions, getAdapter, resolveAgentName } from "./providers/registry.js";
+import { resolveTimeZone } from "./report/buckets.js";
+import { collect, resolveSessionQuery } from "./report/collect.js";
+import { formatReportJson } from "./report/json.js";
+import { formatReport } from "./report/table.js";
 import { formatSessionBanner } from "./ui/banner.js";
-import { formatSessionListing } from "./ui/live-table.js";
+import { formatHelp } from "./ui/help.js";
+import { formatAgentListing, formatSessionListing } from "./ui/live-table.js";
 import { terminalWidth } from "./ui/terminal.js";
 import { confirmYesNo } from "./ui/prompts.js";
 import { summariseCsv } from "./ui/summary.js";
 import { runWatch } from "./watch.js";
-import type { SessionRef } from "./core/types.js";
+import type { CliOptions } from "./options.js";
+import type { ProviderAdapter, SessionRef } from "./core/types.js";
+import type { ProviderId } from "./providers/registry.js";
+import type { PricingResolver } from "./pricing/types.js";
 
 const SESSION_LIST_LIMIT = 25;
-
-const HELP = [
-  "turnlens - per-turn token monitoring for AI coding agents",
-  "",
-  "Usage: turnlens [--provider <id>] [--prompt-preview | --no-prompt-preview]",
-  "                [--offline] [--refresh-pricing]",
-  "",
-  `  --provider <id>      Agent to monitor. One of: ${PROVIDER_IDS.join(", ")}. Default: codex`,
-  "  --prompt-preview     Record a 20-character preview of each prompt.",
-  "                       This writes part of your prompt to disk.",
-  "  --no-prompt-preview  Never record prompt previews.",
-  "  --offline            Price from local data only. Never access the network.",
-  "  --refresh-pricing    Download the pricing list now, even if it looks current.",
-  "  --help               Show this message",
-  "",
-  "With neither preview flag, you are asked once at startup and the answer",
-  "defaults to no. Piped input is never asked, and previews stay off.",
-  "",
-  "Before monitoring starts, TurnLens asks LiteLLM whether its published price",
-  "list has changed and downloads it only if so; the result is kept under",
-  "~/.turnlens/pricing/. If the network is unreachable it falls back to that",
-  "file, then to the list shipped with TurnLens, and carries on. Use --offline",
-  "to skip the check. Nothing is fetched while a session is being watched, and a",
-  "turn whose model cannot be priced records no cost rather than zero.",
-  "",
-  "Session files are only ever read, never modified. Stop monitoring with Ctrl+C;",
-  "a session summary is printed on exit.",
-  "",
-].join("\n");
 
 async function main(): Promise<void> {
   // Every flag is validated here, before a session is listed, so a run that
@@ -53,17 +32,27 @@ async function main(): Promise<void> {
   });
 
   if (options.help) {
-    process.stdout.write(HELP);
+    process.stdout.write(formatHelp(options.helpLevel));
     return;
   }
 
-  const { providerId, previewChoice, offline } = options;
-  // Named `refreshRequested`, not `refreshPricing`: that identifier is the
-  // imported function, and shadowing it here would be a compile error.
-  const refreshRequested = options.refreshPricing;
+  const pricing = await preparePricing(options);
 
+  if (options.mode === "report") await report(options, pricing);
+  else await watch(options, pricing);
+}
+
+/**
+ * Resolves pricing once, before either mode starts.
+ *
+ * Every network moment in a run happens here, which is what lets `lookup` stay
+ * synchronous inside the tailing loop and inside a replay of hundreds of
+ * transcripts.
+ */
+async function preparePricing(options: CliOptions): Promise<PricingResolver> {
   const cachePath = resolvePricingCachePath();
-  if (refreshRequested) {
+
+  if (options.refreshPricing) {
     const refreshed = await refreshPricing({ offline: false, cachePath });
     write([
       refreshed === undefined
@@ -72,32 +61,85 @@ async function main(): Promise<void> {
     ]);
   }
 
-  // Built before monitoring starts, so every network moment in a run happens
-  // here and `lookup` stays synchronous inside the tailing loop.
-  const pricing = await createPricingResolver({
-    offline,
+  return await createPricingResolver({
+    offline: options.offline,
     cachePath,
     notify: (line) => write([line]),
   });
+}
 
-  // Temporary, until Task 11 of the reporting plan adds the agent listing that
-  // bare `turnlens` is meant to print. Until then, naming the agent is required
-  // rather than silently defaulting to one the user did not choose.
-  if (providerId === undefined) {
-    throw new Error(`Name an agent: ${AGENT_NAMES.map((name) => `turnlens ${name}`).join(", ")}`);
+/**
+ * Counts what has already been spent, and stops.
+ *
+ * No lock and no CSV. The lock exists so one session is not watched twice; a
+ * report writes nothing and blocks nobody. No signal handling either: there is no
+ * tail to interrupt and nothing to clean up.
+ */
+async function report(options: CliOptions, pricing: PricingResolver): Promise<void> {
+  const agents = scopedAgents(options.providerId);
+  const data = await collect({
+    agents,
+    pricing,
+    grouping: options.grouping,
+    window: {
+      ...(options.since === undefined ? {} : { since: options.since }),
+      ...(options.until === undefined ? {} : { until: options.until }),
+    },
+    timeZone: resolveTimeZone(),
+    ...(options.sessionIdQuery === undefined ? {} : { sessionIdQuery: options.sessionIdQuery }),
+    ...(options.sessionBreakdown === undefined ? {} : { sessionBreakdown: options.sessionBreakdown }),
+  });
+
+  if (options.json) {
+    process.stdout.write(formatReportJson(data));
+    return;
   }
 
-  const adapter = getAdapter(providerId);
-  const sessions = (await adapter.listSessions()).slice(0, SESSION_LIST_LIMIT);
-  if (sessions.length === 0) throw new Error(describeMissingSessions(providerId, adapter.roots));
+  write(
+    formatReport(data, {
+      width: terminalWidth(process.stdout),
+      compact: options.compact,
+      // Nesting is for a report that spans agents. With one agent named, the
+      // column would repeat the same word down the whole table.
+      nested: agents.length > 1,
+      // The shape the rows actually took, not the word the user typed. With a
+      // breakdown asked for, `report session --id X daily` produces days, so the
+      // table is headed Date and has no session id to show.
+      grouping: options.sessionBreakdown ?? options.grouping,
+    }),
+  );
+}
 
-  const selected = await selectSession(sessions);
+/**
+ * Which agents a report covers.
+ *
+ * Naming none means every agent, which is the whole difference from watching: a
+ * report does not have to choose, so it is not asked to.
+ */
+function scopedAgents(providerId: ProviderId | undefined): readonly ProviderAdapter[] {
+  if (providerId !== undefined) return [getAdapter(providerId)];
+  return AGENT_NAMES.map((name) => getAdapter(resolveAgentNameOrThrow(name)));
+}
+
+/** Unreachable for a name from `AGENT_NAMES`; named so a typo there is not silent. */
+function resolveAgentNameOrThrow(name: string): ProviderId {
+  const resolved = resolveAgentName(name);
+  if (resolved === undefined) throw new Error(`Unknown agent name in the registry: ${name}`);
+  return resolved;
+}
+
+/** Follows one session forward, recording each turn as it closes. */
+async function watch(options: CliOptions, pricing: PricingResolver): Promise<void> {
+  const providerId = options.providerId ?? (await askWhichAgent());
+  const adapter = getAdapter(providerId);
+  const selected = await chooseWatchTarget(options, providerId, adapter);
+
   const includePromptPreview =
-    previewChoice === "ask"
+    options.previewChoice === "ask"
       ? await confirmYesNo(
           "\nStore a 20-character preview of each prompt in the CSV?\nThis writes part of your prompt to disk.",
         )
-      : previewChoice === "enabled";
+      : options.previewChoice === "enabled";
   const csvPath = resolveSessionCsvPath(process.cwd(), selected.provider, selected.sessionId);
 
   // Held for the whole run so one session is never watched twice. The lock lives
@@ -126,7 +168,7 @@ async function main(): Promise<void> {
         csvPath,
         promptPreviews: includePromptPreview,
         pricing: pricing.version,
-        offline,
+        offline: options.offline,
       },
       terminalWidth(process.stdout),
     ),
@@ -147,18 +189,62 @@ async function main(): Promise<void> {
   }
 }
 
+/** The session to follow: the one named, or the one chosen from the list. */
+async function chooseWatchTarget(
+  options: CliOptions,
+  providerId: ProviderId,
+  adapter: ProviderAdapter,
+): Promise<SessionRef> {
+  if (options.sessionIdQuery !== undefined) {
+    return await resolveSessionQuery(options.sessionIdQuery, [adapter]);
+  }
+
+  const sessions = (await adapter.listSessions()).slice(0, SESSION_LIST_LIMIT);
+  if (sessions.length === 0) throw new Error(describeMissingSessions(providerId, adapter.roots));
+
+  return await selectSession(sessions);
+}
+
+/**
+ * Asks which agent to watch, listing each with how much it has.
+ *
+ * Only watch mode asks. An agent with no sessions is still offered, because
+ * choosing it is what prints the directories that were searched, and that is the
+ * only diagnosis available to somebody whose configuration points elsewhere.
+ *
+ * Nothing is remembered between runs. Remembering would save a keystroke and cost
+ * a file, a staleness rule, and a user wondering why the tool chose for them.
+ */
+async function askWhichAgent(): Promise<ProviderId> {
+  const entries = await Promise.all(
+    AGENT_NAMES.map(async (name) => ({
+      name,
+      sessions: await countSessions(resolveAgentNameOrThrow(name)),
+    })),
+  );
+
+  write(formatAgentListing(entries, terminalWidth(process.stdout)));
+
+  const answer = await ask(`\nSelect an agent number, 1 to ${entries.length}: `);
+  const chosen = entries[Number.parseInt(answer.trim(), 10) - 1];
+  if (chosen === undefined) throw new Error(`Enter a number from 1 to ${entries.length}.`);
+
+  return resolveAgentNameOrThrow(chosen.name);
+}
+
 async function selectSession(sessions: readonly SessionRef[]): Promise<SessionRef> {
   write(formatSessionListing(sessions, terminalWidth(process.stdout)));
 
+  return chooseSession(sessions, await ask("\nSelect a session number: "));
+}
+
+async function ask(question: string): Promise<string> {
   const readline = createInterface({ input: process.stdin, output: process.stdout });
-  let answer: string;
   try {
-    answer = await readline.question("\nSelect a session number: ");
+    return await readline.question(question);
   } finally {
     readline.close();
   }
-
-  return chooseSession(sessions, answer);
 }
 
 function write(lines: readonly string[]): void {

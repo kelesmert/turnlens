@@ -2,11 +2,11 @@ import { copyFile, mkdir, mkdtemp, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { collect, resolveSessionQuery } from "../src/report/collect.js";
+import { collect, resolveSessionQuery, uniquePrefixLength } from "../src/report/collect.js";
 import { createPricingResolver } from "../src/pricing/resolver.js";
 import { createCodexAdapter, resolveCodexPaths } from "../src/providers/codex/sessions.js";
 import type { CollectOptions } from "../src/report/collect.js";
-import type { ProviderAdapter } from "../src/core/types.js";
+import type { ProviderAdapter, SessionRef } from "../src/core/types.js";
 import type { PricingResolver } from "../src/pricing/types.js";
 
 /**
@@ -161,6 +161,55 @@ describe("collect, one session broken into days", () => {
     expect(data.buckets[0]?.turns).toBe(TURNS_PER_COPY);
   });
 });
+
+/**
+ * Found by running the report against real Codex data. Eight characters was the
+ * first answer and it does not hold: a Codex id is a uuid v7, which begins with a
+ * timestamp, so two sessions started close together share their opening. Two on
+ * the development machine share all eight. A fragment that cannot be pasted into
+ * `--id` is not doing the job the fragment exists for.
+ */
+describe("the id fragment in a session label", () => {
+  it("lengthens the fragment until every session in the report is distinguishable", () => {
+    const shared = "019f838c-9333-7501-899d-e0813b703e2e";
+    const twin = "019f838c-a92d-7af2-8474-7d413b8771d7";
+
+    expect(uniquePrefixLength([session(shared), session(twin)])).toBeGreaterThan(8);
+  });
+
+  it("stays at eight when eight is enough", () => {
+    expect(
+      uniquePrefixLength([
+        session("aaaaaaaa-0000-0000-0000-000000000001"),
+        session("bbbbbbbb-0000-0000-0000-000000000002"),
+      ]),
+    ).toBe(8);
+  });
+
+  it("stays at eight for a single session, which collides with nothing", () => {
+    expect(uniquePrefixLength([session("aaaaaaaa-0000-0000-0000-000000000001")])).toBe(8);
+  });
+
+  it("reads the uuid out of a Codex filename, where the date is already a column", () => {
+    const codex = session("rollout-2026-07-21T10-20-55-019f838c-9333-7501-899d-e0813b703e2e");
+    const twin = session("rollout-2026-07-21T10-21-01-019f838c-a92d-7af2-8474-7d413b8771d7");
+
+    // Identical up to the uuid, so a prefix of the whole filename would never
+    // separate them however long it grew. Taken from the uuid, these two part
+    // company at the tenth character.
+    expect(uniquePrefixLength([codex, twin])).toBe(10);
+  });
+});
+
+function session(sessionId: string): SessionRef {
+  return {
+    provider: "codex",
+    path: `/tmp/${sessionId}.jsonl`,
+    sessionId,
+    sessionName: "a session",
+    lastActivityMs: 0,
+  };
+}
 
 describe("resolveSessionQuery", () => {
   it("resolves a full id", async () => {

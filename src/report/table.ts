@@ -130,6 +130,7 @@ function lastCell(value: string, column: ReportColumn): string {
 
 type ReportColumnId =
   | "label"
+  | "id"
   | "agent"
   | "models"
   | "input"
@@ -207,6 +208,7 @@ function describeValues(
 ): Readonly<Record<ReportColumnId, string>> {
   return {
     label: overrides.label,
+    id: overrides.label === "" ? "" : bucket.id ?? "",
     agent: overrides.agent ?? bucket.provider ?? "",
     models: bucket.models.join(", "),
     input: count(bucket.usage.inputUncached),
@@ -278,6 +280,7 @@ function dropToFit(
 const DROP_ORDER: readonly ReportColumnId[] = [
   "lastActivity",
   "models",
+  "id",
   "cacheCreate",
   "cacheRead",
   "total",
@@ -290,9 +293,14 @@ function describeTier(options: RenderOptions, narrow: boolean): readonly ReportC
 
   const columns: ReportColumn[] = [
     options.grouping === "session"
-      ? { id: "label", label: "Session", width: 32, minWidth: 14 }
+      ? { id: "label", label: "Session", width: 28, minWidth: 12 }
       : { id: "label", label: "Date", width: 10 },
   ];
+
+  // Its own column, never merged into the label. The label is truncatable and
+  // this is not: a name cut short is still recognisable, an id cut short resolves
+  // to nothing, and this is the string a reader pastes into `--id`.
+  if (options.grouping === "session") columns.push({ id: "id", label: "Id", width: 12 });
 
   if (options.nested) columns.push({ id: "agent", label: "Agent", width: 14 });
   columns.push({ id: "models", label: "Models", width: narrow ? 16 : 22, minWidth: 8 });
@@ -376,8 +384,20 @@ function plural(value: number, noun: string): string {
   return `${value.toLocaleString("en-US")} ${noun}${value === 1 ? "" : "s"}`;
 }
 
+/**
+ * A token count, zero included.
+ *
+ * Zero is printed rather than blanked. A token count is never unknown, so a blank
+ * cell here would be the inverse of the mistake this codebase cares about: it
+ * would make a figure that is known to be zero look like one nobody could work
+ * out. Codex reports no cache-creation tokens at all, and that column reading `0`
+ * down its whole length is the truth about Codex.
+ *
+ * The cost column is the opposite case and is handled separately: there, blank
+ * means could not be priced, and a zero would read as free.
+ */
 function count(value: number): string {
-  return value === 0 ? ABSENT : value.toLocaleString("en-US");
+  return value.toLocaleString("en-US");
 }
 
 /** Empty rather than `$0.00` when nothing here could be priced. */

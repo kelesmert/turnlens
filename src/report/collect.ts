@@ -68,7 +68,12 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
   let oldestDay: string | undefined;
   let newestDay: string | undefined;
 
-  for (const { adapter, session } of await resolveScope(options)) {
+  const scope = await resolveScope(options);
+  // Computed once over every session in scope, because a prefix that is unique
+  // among these rows is the thing a reader copies into `--id`.
+  const prefixLength = uniquePrefixLength(scope.map((scoped) => scoped.session));
+
+  for (const { adapter, session } of scope) {
     sessions += 1;
 
     for await (const turn of replaySession({
@@ -86,9 +91,12 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
       if (newestDay === undefined || day > newestDay) newestDay = day;
       if (turn.costUsd === undefined) unpricedTurns += 1;
 
-      const key = keyFor(turn, session, options);
-      const existing = buckets.get(key.label) ?? seed(key);
-      buckets.set(key.label, addTurn(existing, turn));
+      const key = keyFor(turn, session, options, prefixLength);
+      // Keyed by id as well as label, because a label is not unique. Two sessions
+      // on this machine are both named "(unnamed session)", and keying by the
+      // label alone would sum them into one row.
+      const slot = `${key.label}\u0000${key.id ?? ""}\u0000${key.provider ?? ""}`;
+      buckets.set(slot, addTurn(buckets.get(slot) ?? seed(key), turn));
     }
   }
 
@@ -179,10 +187,16 @@ async function resolveScope(options: CollectOptions): Promise<readonly ScopedSes
 /** The bucket a turn belongs in, and what an empty one of it looks like. */
 interface BucketKey {
   readonly label: string;
+  readonly id?: string;
   readonly provider?: string;
 }
 
-function keyFor(turn: NormalizedTurn, session: SessionRef, options: CollectOptions): BucketKey {
+function keyFor(
+  turn: NormalizedTurn,
+  session: SessionRef,
+  options: CollectOptions,
+  prefixLength: number,
+): BucketKey {
   const perAgent = options.agents.length > 1 ? { provider: turn.provider } : {};
 
   // One session broken into days: the grouping word says session, but the rows
@@ -192,7 +206,11 @@ function keyFor(turn: NormalizedTurn, session: SessionRef, options: CollectOptio
   }
 
   if (options.grouping === "session") {
-    return { label: describeSessionLabel(session), ...perAgent };
+    return {
+      label: session.sessionName,
+      id: identity(session).slice(0, prefixLength),
+      ...perAgent,
+    };
   }
 
   return {
@@ -201,20 +219,45 @@ function keyFor(turn: NormalizedTurn, session: SessionRef, options: CollectOptio
   };
 }
 
+/** The shortest id prefix that is unique in this report, floor 8 characters. */
+const MINIMUM_ID_PREFIX = 8;
+
 /**
- * How a session reads in the label column: its name, then part of its id.
+ * The part of an id worth showing, which is the uuid where there is one.
  *
- * ccusage prints the raw uuid because it has no name to print. TurnLens resolves
- * one, so the name is what a person recognises the row by, and the id fragment is
- * what they copy into `--id`, which takes a prefix.
+ * A Codex id is `rollout-<date>-<uuid>`, and the date is already in the row. A
+ * Claude Code id is the uuid alone.
  */
-function describeSessionLabel(session: SessionRef): string {
-  const uuid = /([0-9a-f]{8})/iu.exec(session.sessionId)?.[1] ?? session.sessionId.slice(0, 8);
-  return `${session.sessionName}  ${uuid}`;
+function identity(session: SessionRef): string {
+  return /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/iu.exec(
+    session.sessionId,
+  )?.[1] ?? session.sessionId;
+}
+
+/**
+ * The shortest prefix length at which every session here is distinguishable.
+ *
+ * Floors at eight, so a report of one session still shows something worth
+ * copying, and grows only as far as the collisions require.
+ */
+export function uniquePrefixLength(sessions: readonly SessionRef[]): number {
+  const ids = sessions.map((session) => identity(session));
+  const longest = Math.max(MINIMUM_ID_PREFIX, ...ids.map((id) => id.length));
+
+  for (let length = MINIMUM_ID_PREFIX; length < longest; length += 1) {
+    const prefixes = new Set(ids.map((id) => id.slice(0, length)));
+    if (prefixes.size === ids.length) return length;
+  }
+
+  return longest;
 }
 
 function seed(key: BucketKey): Bucket {
-  return { ...emptyBucket(key.label), ...(key.provider === undefined ? {} : { provider: key.provider }) };
+  return {
+    ...emptyBucket(key.label),
+    ...(key.id === undefined ? {} : { id: key.id }),
+    ...(key.provider === undefined ? {} : { provider: key.provider }),
+  };
 }
 
 /**

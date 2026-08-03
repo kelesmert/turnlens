@@ -48,6 +48,18 @@ export function isProviderId(value: string): value is ProviderId {
   return (PROVIDER_IDS as readonly string[]).includes(value);
 }
 
+/**
+ * How many sessions an agent has, opening none of them.
+ *
+ * A count, not a listing. Building a Claude Code listing reads the last 256 KB of
+ * every transcript to recover its title, which is the wrong order of magnitude for
+ * a number printed beside a prompt at startup. `listSessionPaths` walks
+ * directories and stops there.
+ */
+export async function countSessions(id: ProviderId): Promise<number> {
+  return (await getAdapter(id).listSessionPaths()).length;
+}
+
 export function getAdapter(id: ProviderId): ProviderAdapter {
   switch (id) {
     case "codex":
