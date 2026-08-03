@@ -55,16 +55,26 @@ export type ColumnId =
   | "effort"
   | "duration";
 
-export interface Column {
+/**
+ * The only two things `fit` needs to know about a column.
+ *
+ * Structural rather than `Column`, because the report has its own column ids and
+ * the padding is the same job in both tables. Widening this instead of copying
+ * `fit` keeps one place deciding how a cell is cut and padded.
+ */
+export interface FittedColumn {
+  readonly width: number;
+  /** Counts and percentages read better right-aligned under their heading. */
+  readonly alignRight?: true;
+}
+
+export interface Column extends FittedColumn {
   readonly id: ColumnId;
   readonly label: string;
-  readonly width: number;
   /** Absent when the column cannot be shortened without becoming unreadable. */
   readonly minWidth?: number;
   /** Absent when the column is never dropped. Lower goes first. */
   readonly dropPriority?: number;
-  /** Counts and percentages read better right-aligned under their heading. */
-  readonly alignRight?: true;
 }
 
 /**
@@ -358,7 +368,14 @@ function orAbsent(value: string): string {
 }
 
 /** Pads to the column width, truncating anything that would break the layout. */
-function fit(value: string, column: Column): string {
+/**
+ * Cuts a cell to its column and pads it to the same width.
+ *
+ * Shared with the report, which has its own columns but the same job to do here.
+ * `truncate` cuts on grapheme boundaries; the padding counts UTF-16 code units,
+ * deliberately, and `docs/ROADMAP.md` records why that is left as it is.
+ */
+export function fit(value: string, column: FittedColumn): string {
   const clipped = truncate(value, column.width);
   return column.alignRight === true
     ? clipped.padStart(column.width)
