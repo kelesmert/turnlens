@@ -38,6 +38,29 @@ const MODELS_HEADING_WIDTH = "Models".length;
  */
 const NARROW_MODEL_WIDTH = 16;
 
+/** Spaces between a cell's content and the vertical rule on either side. */
+const CELL_PADDING = 1;
+
+/**
+ * Light box drawing, the one set that is safe everywhere this runs.
+ *
+ * Light is what CP437 carried, what VT100 drew and what every modern terminal
+ * font still has, so it renders on a Windows console as well as on a Linux one.
+ * Heavy and double are not mixed in: a table that is right on one machine and
+ * ragged on another is worse than a plain one.
+ *
+ * Drawn whatever the output is, including a pipe or a redirect. Two output
+ * shapes would be two test surfaces, and a consumer that wants the figures
+ * rather than the picture has `--json`.
+ */
+const BORDER = {
+  horizontal: "─",
+  vertical: "│",
+  top: { left: "┌", join: "┬", right: "┐" },
+  mid: { left: "├", join: "┼", right: "┤" },
+  bottom: { left: "└", join: "┴", right: "┘" },
+} as const;
+
 export interface RenderOptions {
   /** Absent when output is not going to a terminal, so nothing is dropped. */
   readonly width: number | undefined;
@@ -51,10 +74,14 @@ export interface RenderOptions {
 /**
  * Renders a report: a header, its rows, a total, and the coverage line.
  *
- * Borderless and single-line, like every other table TurnLens prints. ccusage
- * lists two models on two lines inside one bordered cell; that needs a second
- * rendering engine, and `docs/ROADMAP.md` records the decision to keep the one
- * that already draws everything else. Model lists are joined and cut instead.
+ * Bordered, and a row is as tall as its tallest cell. This is where the report
+ * parts company with the live table, which stays borderless: a watcher writes a
+ * row at a time and would have to redraw its bottom edge on every turn, while a
+ * report knows all of its rows before it draws any of them.
+ *
+ * The box is drawn whatever the output is, including a pipe. Two output shapes
+ * are two test surfaces, and a consumer that wants figures rather than a picture
+ * has `--json`.
  */
 export function formatReport(data: ReportData, options: RenderOptions): readonly string[] {
   // Resolved once for the whole report rather than per row, because a collision
@@ -71,11 +98,29 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
   }
 
   return [
+    rule(columns, "top"),
     header,
-    "-".repeat(header.length),
+    rule(columns, "mid"),
     ...formatBody(data.buckets, columns, options, names),
+    rule(columns, "bottom"),
     ...coverage,
   ];
+}
+
+/**
+ * A horizontal rule matching the column layout, at the junction set it needs.
+ *
+ * The three kinds differ only in which characters sit at the ends and between
+ * the columns, so one function draws all of them and no two can disagree about
+ * where a column boundary is.
+ */
+function rule(columns: readonly ReportColumn[], kind: "top" | "mid" | "bottom"): string {
+  const { left, join, right } = BORDER[kind];
+  const spans = columns.map((column) =>
+    BORDER.horizontal.repeat(column.width + CELL_PADDING * 2),
+  );
+
+  return `${left}${spans.join(join)}${right}`;
 }
 
 /**
@@ -113,10 +158,20 @@ function formatBody(
   // belongs to exactly one agent by construction, so nesting a session report
   // would print a total row above a single child that repeats it, and the total
   // would lose the session's id on the way through the merge.
+  const separator = rule(columns, "mid");
+
   if (!options.nested || options.grouping === "session") {
-    for (const bucket of buckets) rows.push(...row(bucket, { label: bucket.label }));
+    for (const bucket of buckets) {
+      if (rows.length > 0) rows.push(separator);
+      rows.push(...row(bucket, { label: bucket.label }));
+    }
   } else {
+    // A separator between a period and its own agents would say they are apart,
+    // which is the opposite of what nesting means. Groups are separated from each
+    // other; inside one, the blank label column already carries the grouping.
     for (const label of distinctLabels(buckets)) {
+      if (rows.length > 0) rows.push(separator);
+
       const group = buckets.filter((bucket) => bucket.label === label);
       rows.push(...row(mergeBuckets(group, label), { label, agent: "All" }));
       for (const bucket of group) {
@@ -126,7 +181,7 @@ function formatBody(
   }
 
   const total = mergeBuckets(buckets, "TOTAL");
-  rows.push("-".repeat(renderedWidth(columns)));
+  rows.push(separator);
   rows.push(...row(total, { label: "TOTAL", agent: ABSENT }));
 
   return rows;
@@ -166,26 +221,20 @@ function renderRow(
 }
 
 /**
- * Joins one row of cells, padding every column but the last.
+ * Joins one row of cells between vertical rules.
  *
- * The last column is not padded because there is nothing to its right to line up
- * with, and trailing spaces are invisible until something keeps them.
+ * Every cell is padded, including the last: the row ends in a border rather than
+ * in whitespace, so there is nothing to trim and no special case for the final
+ * column. Borderless rows needed one and it was a source of ragged output.
  */
 function line(
   columns: readonly ReportColumn[],
   cell: (column: ReportColumn) => string,
 ): string {
-  return columns
-    .map((column, index) =>
-      index === columns.length - 1 ? lastCell(cell(column), column) : fit(cell(column), column),
-    )
-    .join(" ")
-    .trimEnd();
-}
+  const pad = " ".repeat(CELL_PADDING);
+  const cells = columns.map((column) => `${pad}${fit(cell(column), column)}${pad}`);
 
-/** The final cell: still cut to its width, and still right-aligned if it is a number. */
-function lastCell(value: string, column: ReportColumn): string {
-  return column.alignRight === true ? fit(value, column) : truncate(value, column.width);
+  return `${BORDER.vertical}${cells.join(BORDER.vertical)}${BORDER.vertical}`;
 }
 
 /**
@@ -217,10 +266,23 @@ interface ReportColumn extends FittedColumn {
   readonly minWidth?: number;
 }
 
-/** Column widths plus the single space between each neighbouring pair. */
+/**
+ * Column widths plus what the border costs: a vertical rule either side of every
+ * column, shared between neighbours, and a pad on each side of every cell.
+ *
+ * `sum + 3n + 1` where the borderless table was `sum + n - 1`, so eight columns
+ * pay eighteen characters for the box. Changing the formula rather than adding a
+ * second one keeps `shrinkToFit` and `dropToFit` correct for free: both ask this
+ * same question, so neither can be told a width the renderer disagrees with.
+ */
 function renderedWidth(columns: readonly ReportColumn[]): number {
   if (columns.length === 0) return 0;
-  return columns.reduce((sum, column) => sum + column.width, 0) + columns.length - 1;
+
+  const content = columns.reduce((sum, column) => sum + column.width, 0);
+  const padding = columns.length * CELL_PADDING * 2;
+  const rules = columns.length + 1;
+
+  return content + padding + rules;
 }
 
 /**

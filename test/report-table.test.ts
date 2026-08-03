@@ -36,15 +36,31 @@ const COVERAGE: Coverage = {
   pricingVersion: "litellm@sha256:abcdef123456",
 };
 
+/** The heading row, which sits under the table's top rule. */
+function header(lines: readonly string[]): string {
+  return lines[1] ?? "";
+}
+
 /**
- * The data rows only: header and its rule dropped from the front, and everything
- * from the rule above TOTAL onwards dropped from the back. The coverage line is
- * prose and mentions dates, so it cannot be filtered by content.
+ * The data rows only: no rules, no TOTAL, no coverage.
+ *
+ * Found by drawing rather than by content. The coverage line is prose and names
+ * dates, so it cannot be told from a data row by what it says.
  */
 function body(lines: readonly string[]): readonly string[] {
-  const rows = lines.slice(2);
-  const end = rows.findIndex((line) => /^-+$/u.test(line));
-  return end === -1 ? rows : rows.slice(0, end);
+  const rows = lines.slice(3);
+  const bottom = rows.findIndex((line) => line.startsWith("└"));
+  const beforeTotal = rows.slice(0, bottom === -1 ? rows.length : bottom);
+  const totalRule = beforeTotal.findLastIndex((line) => line.startsWith("├"));
+
+  return (totalRule === -1 ? beforeTotal : beforeTotal.slice(0, totalRule)).filter(
+    (line) => !line.startsWith("├"),
+  );
+}
+
+/** The cells of one rendered row, with the borders and their padding removed. */
+function cells(row: string): readonly string[] {
+  return row.split("│").slice(1, -1).map((cell) => cell.trim());
 }
 
 function fixture(): ReportData {
@@ -79,9 +95,9 @@ describe("formatReport, column tiers", () => {
   it("shows the cache and total-token columns when there is room", () => {
     const lines = formatReport(fixture(), WIDE);
 
-    expect(lines[0]).toMatch(/Cache Read/u);
-    expect(lines[0]).toMatch(/Cache Create/u);
-    expect(lines[0]).toMatch(/Total Tokens/u);
+    expect(header(lines)).toMatch(/Cache Read/u);
+    expect(header(lines)).toMatch(/Cache Create/u);
+    expect(header(lines)).toMatch(/Total Tokens/u);
   });
 
   /**
@@ -91,16 +107,16 @@ describe("formatReport, column tiers", () => {
   it("drops them below the threshold", () => {
     const lines = formatReport(fixture(), { ...WIDE, width: REPORT_COMPACT_THRESHOLD - 1 });
 
-    expect(lines[0]).not.toMatch(/Cache Read/u);
-    expect(lines[0]).not.toMatch(/Total Tokens/u);
-    expect(lines[0]).toMatch(/Cost/u);
-    expect(lines[0]).toMatch(/Input/u);
+    expect(header(lines)).not.toMatch(/Cache Read/u);
+    expect(header(lines)).not.toMatch(/Total Tokens/u);
+    expect(header(lines)).toMatch(/Cost/u);
+    expect(header(lines)).toMatch(/Input/u);
   });
 
   it("honours --compact in a wide terminal", () => {
     const lines = formatReport(fixture(), { ...WIDE, compact: true });
 
-    expect(lines[0]).not.toMatch(/Cache Read/u);
+    expect(header(lines)).not.toMatch(/Cache Read/u);
   });
 
   /**
@@ -149,7 +165,7 @@ describe("formatReport, column tiers", () => {
   it("drops nothing when there is no terminal to fit, as a pipe has none", () => {
     const lines = formatReport(fixture(), { ...WIDE, width: undefined });
 
-    expect(lines[0]).toMatch(/Cache Read/u);
+    expect(header(lines)).toMatch(/Cache Read/u);
   });
 
   /**
@@ -162,6 +178,99 @@ describe("formatReport, column tiers", () => {
         expect(line).toBe(line.trimEnd());
       }
     }
+  });
+});
+
+describe("formatReport, borders", () => {
+  /**
+   * A box whose lines disagree about their length is a box with a hole in it,
+   * and it is the failure a width change makes first. Asserted across every
+   * grouping and tier, including rows tall enough to need a continuation line.
+   */
+  it("draws every line of the table to one length", () => {
+    const data = {
+      ...fixture(),
+      buckets: [bucket({ models: ["haiku-4-5", "opus-5", "sonnet-5"] }), bucket()],
+    };
+
+    for (const grouping of ["daily", "session"] as const) {
+      for (const width of [80, 100, 120, 174]) {
+        const lines = formatReport(data, { ...WIDE, width, grouping });
+        const table = lines.slice(0, lines.findIndex((line) => line.startsWith("└")) + 1);
+        const widths = new Set(table.map((line) => line.length));
+
+        expect(widths.size, `${grouping} at ${width}: ${[...widths].join()}`).toBe(1);
+      }
+    }
+  });
+
+  it("closes the box: a top rule, a heading rule, and a bottom rule", () => {
+    const lines = formatReport(fixture(), WIDE);
+
+    expect(lines[0]?.startsWith("┌")).toBe(true);
+    expect(lines[0]?.endsWith("┐")).toBe(true);
+    expect(lines[2]?.startsWith("├")).toBe(true);
+    expect(lines.some((line) => line.startsWith("└"))).toBe(true);
+  });
+
+  /**
+   * The border costs `3n + 1` where a borderless table paid `n - 1`, and
+   * `shrinkToFit` and `dropToFit` both size the table by asking the renderer for
+   * that number. A disagreement between the two is what puts a row past the edge
+   * of a window, so the junctions are counted against the columns rather than
+   * against a remembered total.
+   */
+  it("charges one rule per column boundary to the width budget", () => {
+    const lines = formatReport(fixture(), { ...WIDE, width: undefined });
+    const columns = cells(lines[1] ?? "").length;
+
+    for (const line of [lines[0], lines[1], lines[2]]) {
+      const junctions = [...(line ?? "")].filter((glyph) => "┌┬┐├┼┤│".includes(glyph));
+      expect(junctions).toHaveLength(columns + 1);
+    }
+  });
+
+  /** Every cell is padded on both sides, so no value touches a rule. */
+  it("pads each cell away from its rules", () => {
+    const row = body(formatReport(fixture(), WIDE))[0] ?? "";
+
+    for (const segment of row.split("│").slice(1, -1)) {
+      expect(segment.startsWith(" ")).toBe(true);
+      expect(segment.endsWith(" ")).toBe(true);
+    }
+  });
+
+  it("separates every period from the next", () => {
+    const lines = formatReport(fixture(), WIDE);
+    const rules = lines.filter((line) => line.startsWith("├"));
+
+    // One under the heading, one between the two periods, one above TOTAL.
+    expect(rules).toHaveLength(3);
+  });
+
+  /**
+   * A separator between a period and its own agents would say they are apart,
+   * which is the opposite of what nesting means. The blank label column already
+   * carries the grouping inside a period.
+   */
+  it("does not separate a period from the agents nested under it", () => {
+    const lines = formatReport(nestedFixture(), { ...WIDE, nested: true });
+    const rules = lines.filter((line) => line.startsWith("├"));
+
+    // Two periods: heading, between them, above TOTAL. Not one per agent row.
+    expect(rules).toHaveLength(3);
+  });
+
+  it("draws the box when there is no terminal, as a redirect has none", () => {
+    const lines = formatReport(fixture(), { ...WIDE, width: undefined });
+
+    expect(lines[0]?.startsWith("┌")).toBe(true);
+  });
+
+  it("draws no box at all when there is nothing to put in one", () => {
+    const empty = { ...fixture(), buckets: [] };
+
+    expect(formatReport(empty, WIDE).join("\n")).not.toMatch(/[┌└├]/u);
   });
 });
 
@@ -189,8 +298,8 @@ describe("formatReport, rows", () => {
     const rows = body(formatReport(data, WIDE));
 
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatch(/^2026-08-02 - haiku-4-5/u);
-    expect(rows[1]).toMatch(/^ +- opus-5 *$/u);
+    expect(cells(rows[0] ?? "").slice(0, 2)).toEqual(["2026-08-02", "- haiku-4-5"]);
+    expect(cells(rows[1] ?? "").slice(0, 2)).toEqual(["", "- opus-5"]);
   });
 
   it("keeps a single-model day on one line", () => {
@@ -260,9 +369,9 @@ describe("formatReport, rows", () => {
       ...fixture(),
       buckets: [bucket({ usage: { ...USAGE, cacheCreation5m: 0, cacheCreation1h: 0 } })],
     };
-    const row = formatReport(zeroed, WIDE)[2] ?? "";
+    const row = body(formatReport(zeroed, WIDE))[0] ?? "";
 
-    expect(row).toMatch(/\s0\s/u);
+    expect(cells(row)).toContain("0");
   });
 
   it("prints a total row under the periods", () => {
@@ -296,7 +405,7 @@ describe("formatReport, nested agents", () => {
   });
 
   it("shows no agent column when only one agent is in scope", () => {
-    expect(formatReport(fixture(), WIDE)[0]).not.toMatch(/Agent/u);
+    expect(header(formatReport(fixture(), WIDE))).not.toMatch(/Agent/u);
   });
 
   /**
@@ -314,7 +423,7 @@ describe("formatReport, nested agents", () => {
     expect(lines.join("\n")).not.toMatch(/All/u);
     expect(lines.join("\n")).not.toMatch(/- claude-code/u);
     // The id survives, which it does not through a merge.
-    expect(lines[2]).toMatch(/019f838c-9/u);
+    expect(body(lines)[0]).toMatch(/019f838c-9/u);
   });
 });
 
@@ -322,13 +431,13 @@ describe("formatReport, the session grouping", () => {
   it("heads the label column with Session and adds last activity", () => {
     const lines = formatReport(fixture(), { ...WIDE, grouping: "session" });
 
-    expect(lines[0]).toMatch(/Session/u);
-    expect(lines[0]).toMatch(/Last Activity/u);
+    expect(header(lines)).toMatch(/Session/u);
+    expect(header(lines)).toMatch(/Last Activity/u);
     expect(lines.join("\n")).toMatch(/2026-08-02/u);
   });
 
   it("heads it with the period otherwise", () => {
-    expect(formatReport(fixture(), WIDE)[0]).toMatch(/Date/u);
+    expect(header(formatReport(fixture(), WIDE))).toMatch(/Date/u);
   });
 });
 
