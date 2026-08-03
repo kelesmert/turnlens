@@ -124,11 +124,11 @@ A report reads the agents' own transcripts, so it works whether or not you have
 ever run the watcher. Nothing is written and no session is followed.
 
 ```text
-╭────────────────────────────╮
-│   Usage by day             │
-│                            │
-│   Claude Code  28 sessions │
-╰────────────────────────────╯
+╭────────────────────────────────────────────╮
+│   Claude Code Token Usage Report - Daily   │
+│                                            │
+│   28 sessions over 10 days                 │
+╰────────────────────────────────────────────╯
 
 ┌────────────┬─────────────┬──────────────┬──────────────┬─────────────┐
 │ Date       │ Models      │        Input │       Output │  Cost (USD) │
