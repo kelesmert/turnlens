@@ -164,6 +164,13 @@ Days are your local days, and every report says which timezone it used. The box
 above the table says what the figures cover: how much was read, over what window,
 priced against which list, and how many turns could not be priced at all.
 
+**A turn counts on the day you sent the prompt**, not the day the agent finished
+answering. It only differs for a turn that runs across midnight, and the reason
+is that the alternative makes the day depend on how long the agent thought: the
+same question asked at 23:55 would land on a different day depending on whether
+the answer took four minutes or twelve. The CSV still records when each turn
+closed.
+
 **A report and a CSV can disagree, on purpose.** A report prices every turn at
 today's rates, because a transcript records tokens and not the rate that applied
 when the turn closed. A row the watcher wrote keeps the rate of its own moment.

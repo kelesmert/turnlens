@@ -36,6 +36,12 @@ copy is right until the next flag is added.
   a spreadsheet sum and cannot be told from a genuinely free turn.
 - **A closed turn is never repriced.** `pricing_version` is a column for this
   reason; the rate that paid for a row travels on that row.
+- **A report dates a turn by `startedAt`, its prompt; everything else uses `at`,
+  its close.** The CSV, the live table and `lastActivity` answer "when did this
+  finish". A report answers "what did I spend that day", and under the closing
+  timestamp that day depended on how long the agent thought. `at` is the fallback
+  when no start was seen. `#resetTurnState` must keep clearing `#startedAt`:
+  `model` deliberately persists across a boundary and a start must not.
 - **Nothing is fetched while a session is being watched, or while a report is
   being built.** Pricing resolves once, before either loop, and `lookup` is
   synchronous. Adding an `await` to that path breaks a guarantee no test covers,
