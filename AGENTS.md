@@ -36,15 +36,25 @@ copy is right until the next flag is added.
   a spreadsheet sum and cannot be told from a genuinely free turn.
 - **A closed turn is never repriced.** `pricing_version` is a column for this
   reason; the rate that paid for a row travels on that row.
-- **Nothing is fetched while a session is being watched.** Pricing resolves once,
-  before the tail loop, and `lookup` is synchronous. Adding an `await` to that
-  path breaks a guarantee no test covers.
+- **Nothing is fetched while a session is being watched, or while a report is
+  being built.** Pricing resolves once, before either loop, and `lookup` is
+  synchronous. Adding an `await` to that path breaks a guarantee no test covers,
+  and a report replays every transcript on the machine through it.
+- **A token count of zero is printed; a cost that could not be computed is
+  blank.** The two look alike and mean opposite things. A count is never unknown,
+  so blanking a zero would make a known figure look unknowable; a cost of `0`
+  would read as free.
 - **Long-context, priority, flex, batch and regional rates are deliberately
   unused.** They look like an omission and are not.
 - **`message.usage.iterations` is not summed.** It mirrors the record's own
   usage; summing it doubles every number.
-- **`importHistory` is deliberately unreachable from the CLI.** A
-  `--import-history` flag was considered and rejected.
+- **`replaySession` in `core/replay.ts` is the batch path: one file in, priced
+  turns out, and nowhere for them to go.** The watcher, the report and
+  `importHistory` all sit on it. Anything that reads a whole transcript belongs
+  there rather than beside it.
+- **`importHistory` is still deliberately unreachable from the CLI.** A
+  `--import-history` flag was considered and rejected. What it owns now is only
+  the CSV: deduping, renumbering and appending.
 - **Display width is deliberately counted in code units.** A half-built Unicode
   table that is wrong in a new way is worse than an honest note.
 - **A change is not finished until the document its `update-when` names is

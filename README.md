@@ -62,28 +62,42 @@ node dist/cli.js --help
 
 ## Usage
 
-Run it, pick a session, leave it running in a second terminal while you work.
-
-For a one-off run without installing globally:
+Two modes. Watch a session as it runs, or count what has already been spent.
 
 ```bash
-npx turnlens@latest --provider claude-code
+turnlens claude            # watch: pick a session and follow it
+turnlens claude report     # count: what has been spent already
 ```
 
-If installed globally:
+For a one-off run without installing globally, put `npx turnlens@latest` where
+`turnlens` appears above.
+
+Naming no agent means different things in the two modes, deliberately. Watching
+asks which agent, because two sessions cannot be followed at once. A report does
+not ask: it covers every agent.
 
 ```bash
-turnlens --provider claude-code
+turnlens                   # ask which agent, then list its sessions
+turnlens report            # every agent, grouped by day
+```
+
+Agents are `claude` and `codex`. `claude-code` is accepted for `claude`; they are
+the same agent and reach the same place.
+
+### Watching
+
+```bash
+turnlens claude
+turnlens claude --id a3f2c891     # skip the list, by id or unique prefix
 ```
 
 TurnLens lists the sessions it can find, most recently active first, and asks
-which one to watch. It then follows that session's transcript and prints a row
+which one to watch. On selection it prices the turns the session already closed
+and shows them as one summary line, then follows the transcript and prints a row
 each time a turn closes. Stop with Ctrl+C; a summary is printed on exit.
 
-### Options
-
 ```
-  --provider <id>      Agent to monitor. One of: codex, claude-code. Default: codex
+  --id <session>       Skip the list. A full session id or a unique prefix.
   --prompt-preview     Record a 20-character preview of each prompt.
                        This writes part of your prompt to disk.
   --no-prompt-preview  Never record prompt previews.
@@ -91,6 +105,41 @@ each time a turn closes. Stop with Ctrl+C; a summary is printed on exit.
   --refresh-pricing    Download the pricing list now, even if it looks current.
   --help               Show this message
 ```
+
+### Reporting
+
+```bash
+turnlens claude report                            # by day
+turnlens claude report weekly                     # weeks begin Monday
+turnlens claude report monthly
+turnlens claude report session                    # one row per session
+turnlens claude report session --id a3f2 daily    # that session, day by day
+turnlens report                                   # every agent in one table
+```
+
+A report reads the agents' own transcripts, so it works whether or not you have
+ever run the watcher. Nothing is written and no session is followed.
+
+```
+  --id <session>       One session only. Goes with the word `session`.
+  --since <date>       Earliest day to include, YYYY-MM-DD. Inclusive.
+  --until <date>       Latest day to include, YYYY-MM-DD. Inclusive.
+  --json               Machine-readable output on stdout.
+  --compact            Fewer columns, whatever the terminal's width.
+  --offline            Price from local data only. Never access the network.
+  --refresh-pricing    Download the pricing list now, even if it looks current.
+  --help               Show this message
+```
+
+Days are your local days, and every report says which timezone it used.
+
+**A report and a CSV can disagree, on purpose.** A report prices every turn at
+today's rates, because a transcript records tokens and not the rate that applied
+when the turn closed. A row the watcher wrote keeps the rate of its own moment.
+If you want figures that stay put when upstream prices change, keep the CSVs.
+
+Archived sessions are always counted. Their tokens were spent, and there is no
+option to leave them out of a total.
 
 ## What counts as a turn
 
