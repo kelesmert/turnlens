@@ -326,11 +326,51 @@ describe("formatReport, the title", () => {
     expect(title(formatReport(fixture(), WIDE)).at(-1)).toBe("");
   });
 
-  /** An empty report has a coverage line and nothing to label. */
-  it("prints no title when there is no table", () => {
-    const empty = { ...fixture(), buckets: [] };
+  /**
+   * Moved up from under the table. A reader wanting to know what a number covers
+   * is looking at the number, and reading upwards past two hundred rows to find
+   * the answer is the wrong direction.
+   */
+  it("carries the window, the timezone and the pricing list", () => {
+    const text = title(formatReport(fixture(), WIDE)).join("\n");
 
-    expect(formatReport(empty, WIDE).join("\n")).not.toMatch(/[╭╰]/u);
+    expect(text).toMatch(/2026-07-04 to 2026-08-02, Europe\/Istanbul/u);
+    expect(text).toMatch(/Priced at today's rates, from litellm@sha256:abcdef123456/u);
+  });
+
+  it("says how many turns could not be priced, and only when some could not", () => {
+    expect(title(formatReport(unpricedFixture(), WIDE)).join("\n")).toMatch(
+      /31 turns could not be priced/u,
+    );
+    expect(title(formatReport(fixture(), WIDE)).join("\n")).not.toMatch(/could not be priced/u);
+  });
+
+  /**
+   * A long pricing version is what pushes the box past the window. Wrapped to
+   * what the borders leave rather than allowed to run off the edge, which is the
+   * one thing a box cannot survive.
+   */
+  it("wraps its own lines to the window rather than overflowing", () => {
+    for (const width of [60, 80, 100]) {
+      for (const line of title(formatReport(fixture(), { ...WIDE, width }))) {
+        expect(line.length, `title at ${width}`).toBeLessThanOrEqual(width);
+      }
+    }
+  });
+
+  /**
+   * A report that found no turns is exactly when a reader needs to know what was
+   * searched, and since the scope moved into the box there is nowhere else for
+   * that answer to be.
+   */
+  it("draws the box even with no table to label", () => {
+    const lines = formatReport({ ...fixture(), buckets: [] }, WIDE);
+
+    expect(lines[0]?.startsWith("╭")).toBe(true);
+    expect(lines.join("\n")).toMatch(/2 sessions over 5 days/u);
+    expect(lines.join("\n")).toMatch(/litellm@sha256:abcdef123456/u);
+    expect(lines.join("\n")).toMatch(/No turns found/u);
+    expect(lines.join("\n")).not.toMatch(/[┌└]/u);
   });
 });
 

@@ -93,8 +93,15 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
   const header = line(columns, (column) => column.label);
   const coverage = formatCoverage(data.coverage, options.width, dropped);
 
+  // The box is drawn even with nothing to label. A report that found no turns is
+  // exactly when a reader needs to know what was searched, and the answer used to
+  // be printed under a table that was not there.
   if (data.buckets.length === 0) {
-    return [`No turns found${describeWindow(data.coverage)}.`, ...coverage];
+    return [
+      ...formatTitle(data.coverage, options),
+      `No turns found${describeWindow(data.coverage)}.`,
+      ...coverage,
+    ];
   }
 
   return [
@@ -121,11 +128,22 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
  * not look like the same thing.
  */
 function formatTitle(coverage: Coverage, options: RenderOptions): readonly string[] {
+  // The box cannot be wider than the window, and a long pricing version is what
+  // pushes it there. Wrapped to what is left after the borders and their pads,
+  // rather than allowed to run off the edge.
+  const ceiling =
+    options.width === undefined
+      ? Number.POSITIVE_INFINITY
+      : options.width - LAST_COLUMN_RESERVE - TITLE_PADDING * 2 - 2;
+
   const lines = [
     `${describeScope(coverage)} Token Usage Report - ${GROUPING_PHRASE[options.grouping]}`,
     "",
     ...describeAgents(coverage),
-  ];
+    "",
+    ...describeSource(coverage),
+  ].flatMap((line) => (line === "" ? [""] : wrapWords(line, ceiling)));
+
   const inner = Math.max(...lines.map((line) => line.length));
   const span = TITLE_BORDER.horizontal.repeat(inner + TITLE_PADDING * 2);
   const pad = " ".repeat(TITLE_PADDING);
@@ -136,6 +154,31 @@ function formatTitle(coverage: Coverage, options: RenderOptions): readonly strin
     `${TITLE_BORDER.botLeft}${span}${TITLE_BORDER.botRight}`,
     "",
   ];
+}
+
+/**
+ * Where the figures came from, and what they can be trusted to mean.
+ *
+ * This is the honesty a `--no-archived` flag would have carried. Nothing is left
+ * out of a total, so the job is to say what went in: over what window, in which
+ * timezone, priced against which list, and how much could not be priced at all.
+ *
+ * It sits above the table rather than below it. A reader who wants to know what
+ * a number covers is looking at the number, and reading upwards past two hundred
+ * rows to find the answer is the wrong direction.
+ */
+function describeSource(coverage: Coverage): readonly string[] {
+  const window = describeWindow(coverage).replace(/^, /u, "");
+  const lines = [
+    window === "" ? coverage.timeZone : `${window}, ${coverage.timeZone}`,
+    `Priced at today's rates, from ${coverage.pricingVersion}`,
+  ];
+
+  if (coverage.unpricedTurns > 0) {
+    lines.push(`${plural(coverage.unpricedTurns, "turn")} could not be priced`);
+  }
+
+  return lines;
 }
 
 /**
@@ -578,10 +621,12 @@ function describeTier(
 }
 
 /**
- * What the report covered, and what its figures are.
+ * What could not be shown, printed under the table it happened to.
  *
- * This carries the honesty a `--no-archived` flag would have carried. Nothing is
- * left out of a total, so the line says what went in rather than what did not.
+ * Only the rendering caveats live here now. What the report *covered* moved into
+ * the title box, because a reader looking for the scope of a figure was reading
+ * upwards past the whole table to find it. A note about a column that did not
+ * fit belongs beside the columns that did.
  */
 function formatCoverage(
   coverage: Coverage,
@@ -589,21 +634,7 @@ function formatCoverage(
   droppedColumns: readonly string[] = [],
 ): readonly string[] {
   const ceiling = width === undefined ? Number.POSITIVE_INFINITY : width - LAST_COLUMN_RESERVE;
-  const lines = [
-    "",
-    ...wrapWords(
-      `${plural(coverage.sessions, "session")}${describeWindow(coverage)}, ${coverage.timeZone}.`,
-      ceiling,
-    ),
-    ...wrapWords(
-      `Every figure is priced at today's rates, from ${coverage.pricingVersion}.`,
-      ceiling,
-    ),
-  ];
-
-  if (coverage.unpricedTurns > 0) {
-    lines.push(...wrapWords(`${plural(coverage.unpricedTurns, "turn")} could not be priced.`, ceiling));
-  }
+  const lines: string[] = [];
 
   // Said because a table quietly missing a column is one a reader will draw a
   // wrong conclusion from. The tier drop above the threshold is not reported:
