@@ -36,6 +36,17 @@ const COVERAGE: Coverage = {
   pricingVersion: "litellm@sha256:abcdef123456",
 };
 
+/**
+ * The data rows only: header and its rule dropped from the front, and everything
+ * from the rule above TOTAL onwards dropped from the back. The coverage line is
+ * prose and mentions dates, so it cannot be filtered by content.
+ */
+function body(lines: readonly string[]): readonly string[] {
+  const rows = lines.slice(2);
+  const end = rows.findIndex((line) => /^-+$/u.test(line));
+  return end === -1 ? rows : rows.slice(0, end);
+}
+
 function fixture(): ReportData {
   return {
     buckets: [bucket(), bucket({ label: "2026-08-01", costUsd: 113.39 })],
@@ -169,15 +180,65 @@ describe("formatReport, rows", () => {
     expect(formatReport(fixture(), WIDE).join("\n")).toMatch(/opus-5/u);
   });
 
-  it("joins several models onto one line rather than wrapping the cell", () => {
+  /**
+   * The reason this table was rewritten. Joined and cut, a two-model day read
+   * `gpt-5.6-luna, gpt-5...`, which names one model and half of nothing.
+   */
+  it("gives each model its own line rather than joining and cutting", () => {
     const data = { ...fixture(), buckets: [bucket({ models: ["haiku-4-5", "opus-5"] })] };
-    // Only the body: the coverage line names dates too, and it is prose.
-    const rows = formatReport(data, WIDE)
-      .slice(2)
-      .filter((line) => line.startsWith("2026-08-02"));
+    const rows = body(formatReport(data, WIDE));
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatch(/haiku-4-5, opus-5/u);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatch(/^2026-08-02 - haiku-4-5/u);
+    expect(rows[1]).toMatch(/^ +- opus-5 *$/u);
+  });
+
+  it("keeps a single-model day on one line", () => {
+    const data = { ...fixture(), buckets: [bucket({ models: ["opus-5"] })] };
+    expect(body(formatReport(data, WIDE))).toHaveLength(1);
+  });
+
+  /**
+   * The continuation line carries the model and nothing else. Repeating the date
+   * would read as a second day and repeating a count would double the report.
+   */
+  it("leaves every other column blank on a continuation line", () => {
+    const data = { ...fixture(), buckets: [bucket({ models: ["haiku-4-5", "opus-5"] })] };
+    const [, second] = body(formatReport(data, WIDE));
+
+    expect(second).not.toMatch(/2026-08-02/u);
+    expect(second).not.toMatch(/\d,\d/u);
+    expect(second).not.toMatch(/\$/u);
+  });
+
+  it("sizes the models column to the longest single name, not the joined list", () => {
+    const short = formatReport(
+      { ...fixture(), buckets: [bucket({ models: ["opus-5"] })] },
+      WIDE,
+    );
+    const long = formatReport(
+      { ...fixture(), buckets: [bucket({ models: ["opus-5", "haiku-4-5"] })] },
+      WIDE,
+    );
+
+    // Two models, but the wider name is only three characters longer than the
+    // other, so the table grows by three rather than by a joined list.
+    expect(long[0]?.length).toBe((short[0]?.length ?? 0) + 3);
+  });
+
+  /**
+   * The full identifier is what the shortening rule falls back to, and it has to
+   * survive the trip to a screen rather than being cut on arrival.
+   */
+  it("prints full identifiers whole when shortening would collide", () => {
+    const data = {
+      ...fixture(),
+      buckets: [bucket({ models: ["claude-opus-5", "opus-5"] })],
+    };
+    const rows = body(formatReport(data, WIDE));
+
+    expect(rows[0]).toMatch(/- claude-opus-5/u);
+    expect(rows[1]).toMatch(/- opus-5/u);
   });
 
   /** The invariant at the last place it can be broken: on the way to a screen. */

@@ -1,5 +1,6 @@
 import { truncate, wrapWords } from "../core/text.js";
 import { mergeBuckets } from "./aggregate.js";
+import { shortenModelNames } from "./models.js";
 import { fit } from "../ui/live-table.js";
 import type { FittedColumn } from "../ui/live-table.js";
 import type { Grouping } from "../options.js";
@@ -21,6 +22,22 @@ const LAST_COLUMN_RESERVE = 1;
 
 const ABSENT = "";
 
+/** What each model line is prefixed with, so a list reads as a list. */
+const MODEL_BULLET = "- ";
+
+/** The models column never narrows past its own heading. */
+const MODELS_HEADING_WIDTH = "Models".length;
+
+/**
+ * The ceiling on the models column in the narrow tier.
+ *
+ * A narrow terminal has already given up its cache columns, so a long model name
+ * is cut here rather than pushing the numbers off the screen. This is the one
+ * place a model name is still truncated, and only when the window leaves no
+ * choice.
+ */
+const NARROW_MODEL_WIDTH = 16;
+
 export interface RenderOptions {
   /** Absent when output is not going to a terminal, so nothing is dropped. */
   readonly width: number | undefined;
@@ -40,7 +57,12 @@ export interface RenderOptions {
  * that already draws everything else. Model lists are joined and cut instead.
  */
 export function formatReport(data: ReportData, options: RenderOptions): readonly string[] {
-  const { columns, dropped } = describeColumns(options);
+  // Resolved once for the whole report rather than per row, because a collision
+  // is a property of the set: two models clash or they do not, and a row cannot
+  // see far enough to tell.
+  const names = shortenModelNames(data.buckets.flatMap((bucket) => bucket.models));
+
+  const { columns, dropped } = describeColumns(options, widestModel(names));
   const header = line(columns, (column) => column.label);
   const coverage = formatCoverage(data.coverage, options.width, dropped);
 
@@ -51,9 +73,22 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
   return [
     header,
     "-".repeat(header.length),
-    ...formatBody(data.buckets, columns, options),
+    ...formatBody(data.buckets, columns, options, names),
     ...coverage,
   ];
+}
+
+/**
+ * How wide the models column has to be to print a name whole.
+ *
+ * One model per line means the column is sized by the longest single name
+ * rather than by the joined list, which is what made the old column overflow at
+ * any width. Two characters are added for the `- ` each line carries, and the
+ * heading sets the floor.
+ */
+function widestModel(names: ReadonlyMap<string, string>): number {
+  const longest = Math.max(0, ...[...names.values()].map((name) => name.length));
+  return Math.max(MODELS_HEADING_WIDTH, longest + MODEL_BULLET.length);
 }
 
 /**
@@ -68,28 +103,31 @@ function formatBody(
   buckets: readonly Bucket[],
   columns: readonly ReportColumn[],
   options: RenderOptions,
+  names: ReadonlyMap<string, string>,
 ): readonly string[] {
   const rows: string[] = [];
+  const row = (bucket: Bucket, overrides: RowOverrides): readonly string[] =>
+    renderRow(bucket, columns, overrides, names);
 
   // Nesting groups rows that share a label, which only periods do. A session
   // belongs to exactly one agent by construction, so nesting a session report
   // would print a total row above a single child that repeats it, and the total
   // would lose the session's id on the way through the merge.
   if (!options.nested || options.grouping === "session") {
-    for (const bucket of buckets) rows.push(row(bucket, columns, { label: bucket.label }));
+    for (const bucket of buckets) rows.push(...row(bucket, { label: bucket.label }));
   } else {
     for (const label of distinctLabels(buckets)) {
       const group = buckets.filter((bucket) => bucket.label === label);
-      rows.push(row(mergeBuckets(group, label), columns, { label, agent: "All" }));
+      rows.push(...row(mergeBuckets(group, label), { label, agent: "All" }));
       for (const bucket of group) {
-        rows.push(row(bucket, columns, { label: ABSENT, agent: `- ${bucket.provider ?? ""}` }));
+        rows.push(...row(bucket, { label: ABSENT, agent: `- ${bucket.provider ?? ""}` }));
       }
     }
   }
 
   const total = mergeBuckets(buckets, "TOTAL");
   rows.push("-".repeat(renderedWidth(columns)));
-  rows.push(row(total, columns, { label: "TOTAL", agent: ABSENT }));
+  rows.push(...row(total, { label: "TOTAL", agent: ABSENT }));
 
   return rows;
 }
@@ -104,9 +142,27 @@ interface RowOverrides {
   readonly agent?: string;
 }
 
-function row(bucket: Bucket, columns: readonly ReportColumn[], overrides: RowOverrides): string {
-  const values = describeValues(bucket, overrides);
-  return line(columns, (column) => values[column.id]);
+/**
+ * The visual lines one bucket occupies, top-aligned.
+ *
+ * A row is a list of lines rather than a string because a cell can hold more
+ * than one fact: a day that used three models has three of them, and joining
+ * them into one cell is what forced the old column to cut a model name in half.
+ * The tallest cell sets the height and the shorter ones are blank beneath, which
+ * reads as "nothing more here" rather than as a repeat.
+ */
+function renderRow(
+  bucket: Bucket,
+  columns: readonly ReportColumn[],
+  overrides: RowOverrides,
+  names: ReadonlyMap<string, string>,
+): readonly string[] {
+  const values = describeValues(bucket, overrides, names);
+  const height = Math.max(1, ...columns.map((column) => values[column.id].length));
+
+  return Array.from({ length: height }, (_, index) =>
+    line(columns, (column) => values[column.id][index] ?? ABSENT),
+  );
 }
 
 /**
@@ -131,6 +187,15 @@ function line(
 function lastCell(value: string, column: ReportColumn): string {
   return column.alignRight === true ? fit(value, column) : truncate(value, column.width);
 }
+
+/**
+ * Every cell of one row, as the lines it occupies.
+ *
+ * An array rather than a string carrying newlines. `core/text.ts` records that a
+ * line holding a newline is what this format is careful never to produce, and a
+ * cell that is explicitly a list cannot drift from that by accident.
+ */
+type CellLines = Readonly<Record<ReportColumnId, readonly string[]>>;
 
 type ReportColumnId =
   | "label"
@@ -209,19 +274,22 @@ const SHRINK_ORDER: readonly ReportColumnId[] = ["models", "label"];
 function describeValues(
   bucket: Bucket,
   overrides: RowOverrides,
-): Readonly<Record<ReportColumnId, string>> {
+  names: ReadonlyMap<string, string>,
+): CellLines {
   return {
-    label: overrides.label,
-    id: overrides.label === "" ? "" : bucket.id ?? "",
-    agent: overrides.agent ?? bucket.provider ?? "",
-    models: bucket.models.join(", "),
-    input: count(bucket.usage.inputUncached),
-    output: count(bucket.usage.output),
-    cacheCreate: count(bucket.usage.cacheCreation5m + bucket.usage.cacheCreation1h),
-    cacheRead: count(bucket.usage.cacheRead),
-    total: count(bucket.usage.total),
-    cost: cost(bucket.costUsd),
-    lastActivity: bucket.lastActivity.slice(0, "YYYY-MM-DD".length),
+    label: [overrides.label],
+    id: [overrides.label === "" ? "" : bucket.id ?? ""],
+    agent: [overrides.agent ?? bucket.provider ?? ""],
+    // One model per line, bulleted. A list read down needs no separator, and the
+    // bullet is what tells a two-model row from a row whose neighbour ran over.
+    models: bucket.models.map((id) => `${MODEL_BULLET}${names.get(id) ?? id}`),
+    input: [count(bucket.usage.inputUncached)],
+    output: [count(bucket.usage.output)],
+    cacheCreate: [count(bucket.usage.cacheCreation5m + bucket.usage.cacheCreation1h)],
+    cacheRead: [count(bucket.usage.cacheRead)],
+    total: [count(bucket.usage.total)],
+    cost: [cost(bucket.costUsd)],
+    lastActivity: [bucket.lastActivity.slice(0, "YYYY-MM-DD".length)],
   };
 }
 
@@ -232,7 +300,10 @@ function describeValues(
  * would repeat the same word down the whole table and take width from the
  * numbers, which are what the table is for.
  */
-function describeColumns(options: RenderOptions): {
+function describeColumns(
+  options: RenderOptions,
+  modelWidth: number,
+): {
   readonly columns: readonly ReportColumn[];
   readonly dropped: readonly string[];
 } {
@@ -243,7 +314,7 @@ function describeColumns(options: RenderOptions): {
   // Three steps in this order. The tier is the documented choice at a known
   // threshold. Shrinking only shortens a name, so it happens whenever the window
   // asks. Dropping loses a fact, so it is last and it is reported.
-  const shrunk = shrinkToFit(describeTier(options, narrow), options.width);
+  const shrunk = shrinkToFit(describeTier(options, narrow, modelWidth), options.width);
   return dropToFit(shrunk, options.width);
 }
 
@@ -293,7 +364,11 @@ const DROP_ORDER: readonly ReportColumnId[] = [
   "agent",
 ];
 
-function describeTier(options: RenderOptions, narrow: boolean): readonly ReportColumn[] {
+function describeTier(
+  options: RenderOptions,
+  narrow: boolean,
+  modelWidth: number,
+): readonly ReportColumn[] {
 
   const columns: ReportColumn[] = [
     options.grouping === "session"
@@ -307,7 +382,15 @@ function describeTier(options: RenderOptions, narrow: boolean): readonly ReportC
   if (options.grouping === "session") columns.push({ id: "id", label: "Id", width: 12 });
 
   if (options.nested) columns.push({ id: "agent", label: "Agent", width: 14 });
-  columns.push({ id: "models", label: "Models", width: narrow ? 16 : 22, minWidth: 8 });
+  // Sized by the data rather than by a constant. One model per line means the
+  // width the column needs is knowable, so a fixed 22 would either cut a name
+  // that fits or reserve space for one that does not exist.
+  columns.push({
+    id: "models",
+    label: "Models",
+    width: narrow ? Math.min(modelWidth, NARROW_MODEL_WIDTH) : modelWidth,
+    minWidth: MODELS_HEADING_WIDTH,
+  });
   columns.push({ id: "input", label: "Input", width: 12, alignRight: true });
   columns.push({ id: "output", label: "Output", width: 12, alignRight: true });
 
