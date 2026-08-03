@@ -121,7 +121,11 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
  * not look like the same thing.
  */
 function formatTitle(coverage: Coverage, options: RenderOptions): readonly string[] {
-  const lines = [`Usage ${GROUPING_PHRASE[options.grouping]}`, "", ...describeAgents(coverage)];
+  const lines = [
+    `${describeScope(coverage)} Token Usage Report - ${GROUPING_PHRASE[options.grouping]}`,
+    "",
+    ...describeAgents(coverage),
+  ];
   const inner = Math.max(...lines.map((line) => line.length));
   const span = TITLE_BORDER.horizontal.repeat(inner + TITLE_PADDING * 2);
   const pad = " ".repeat(TITLE_PADDING);
@@ -135,22 +139,45 @@ function formatTitle(coverage: Coverage, options: RenderOptions): readonly strin
 }
 
 /**
- * One line per agent searched, with how many of its sessions were read.
+ * Whose report this is: the one agent named, or all of them.
  *
- * Listed even when an agent produced no row, because a reader who sees no Codex
- * anywhere in the table wants to know whether Codex was searched and found
- * empty, or was never in scope. The counts also add up to the coverage line's
- * total, which makes that line a check on this one rather than a repeat of it.
+ * Read off the coverage rather than off a flag, so the heading describes what
+ * was actually searched. Narrowing by `--id` to a session that happens to be
+ * Codex's leaves one agent in scope, and the heading should say Codex.
+ */
+function describeScope(coverage: Coverage): string {
+  const only = coverage.agents.length === 1 ? coverage.agents[0] : undefined;
+  return only === undefined ? "All Agents" : agentTitle(only.provider);
+}
+
+/**
+ * What the report covered: how much was read, and over how many days.
+ *
+ * The day count is the one fact neither the table nor the coverage line carries.
+ * A range says a fortnight; this says whether that fortnight held three days of
+ * work or fourteen, which is what makes a daily average mean anything.
+ *
+ * With one agent in scope the heading already names it, so the breakdown would
+ * repeat the heading and is left out. With more than one it is the answer to
+ * which agent contributed what, and an agent that produced no row is still
+ * listed: "searched and empty" and "never in scope" are different answers, and
+ * only the scope knows which.
  */
 function describeAgents(coverage: Coverage): readonly string[] {
   if (coverage.agents.length === 0) return ["No agents found"];
 
+  const scale = `${plural(coverage.sessions, "session")} over ${plural(coverage.days, "day")}`;
+  if (coverage.agents.length === 1) return [scale];
+
   const width = Math.max(...coverage.agents.map((agent) => agentTitle(agent.provider).length));
 
-  return coverage.agents.map(
-    (agent) =>
-      `${agentTitle(agent.provider).padEnd(width)}  ${plural(agent.sessions, "session")}`,
-  );
+  return [
+    scale,
+    "",
+    ...coverage.agents.map(
+      (agent) => `${agentTitle(agent.provider).padEnd(width)}  ${plural(agent.sessions, "session")}`,
+    ),
+  ];
 }
 
 /** How an agent is written in a title, as a reader would say it aloud. */
@@ -158,12 +185,12 @@ function agentTitle(provider: string): string {
   return provider === "claude-code" ? "Claude Code" : "Codex";
 }
 
-/** How each grouping reads in a sentence, rather than as a flag. */
+/** The grouping as a heading word, taken from the shape the rows actually took. */
 const GROUPING_PHRASE: Readonly<Record<Grouping, string>> = {
-  daily: "by day",
-  weekly: "by week",
-  monthly: "by month",
-  session: "by session",
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+  session: "Session",
 };
 
 const TITLE_PADDING = 3;

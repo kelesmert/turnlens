@@ -11,6 +11,18 @@ import type { PeriodGrouping } from "./buckets.js";
 import type { Window } from "./window.js";
 
 /**
+ * One agent's contribution to a report's scope.
+ *
+ * Carried rather than derived from the buckets, because an agent with sessions
+ * and no priceable turns still belongs in the answer to "what did this cover".
+ * A reader who sees no Codex row wants to know whether Codex was searched.
+ */
+export interface AgentCoverage {
+  readonly provider: string;
+  readonly sessions: number;
+}
+
+/**
  * What a report covered, so its figures can be read for what they are.
  *
  * This carries all the honesty a `--no-archived` flag would otherwise have
@@ -24,20 +36,17 @@ import type { Window } from "./window.js";
  * client's store, behind an undocumented schema. Reporting the count for one
  * agent only would put two meanings in one number.
  */
-/**
- * One agent's contribution to a report's scope.
- *
- * Carried rather than derived from the buckets, because an agent with sessions
- * and no priceable turns still belongs in the answer to "what did this cover".
- * A reader who sees no Codex row wants to know whether Codex was searched.
- */
-export interface AgentCoverage {
-  readonly provider: string;
-  readonly sessions: number;
-}
-
 export interface Coverage {
   readonly sessions: number;
+  /**
+   * Local days that carried at least one turn.
+   *
+   * Not the span between the first and last: a fortnight with three days of work
+   * in it is three, and the difference is the point. Counted here rather than
+   * derived from the buckets, which are weeks or sessions under every grouping
+   * but the daily one.
+   */
+  readonly days: number;
   /** Every agent searched, in registry order, whether or not it produced a row. */
   readonly agents: readonly AgentCoverage[];
   /** Absent when no turn survived the window. */
@@ -84,6 +93,7 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
 
   const scope = await resolveScope(options);
   const perAgent = new Map<string, number>(options.agents.map((agent) => [agent.id, 0]));
+  const days = new Set<string>();
   // Computed once over every session in scope, because a prefix that is unique
   // among these rows is the thing a reader copies into `--id`.
   const prefixLength = uniquePrefixLength(scope.map((scoped) => scoped.session));
@@ -103,6 +113,7 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
       const day = localDate(turn.at, options.timeZone);
       if (!withinWindow(day, options.window)) continue;
 
+      days.add(day);
       if (oldestDay === undefined || day < oldestDay) oldestDay = day;
       if (newestDay === undefined || day > newestDay) newestDay = day;
       if (turn.costUsd === undefined) unpricedTurns += 1;
@@ -120,6 +131,7 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
     buckets: sort([...buckets.values()], options),
     coverage: {
       sessions,
+      days: days.size,
       agents: [...perAgent].map(([provider, count]) => ({ provider, sessions: count })),
       ...(oldestDay === undefined ? {} : { oldestDay }),
       ...(newestDay === undefined ? {} : { newestDay }),

@@ -29,6 +29,7 @@ function bucket(overrides: Partial<Bucket> = {}): Bucket {
 
 const COVERAGE: Coverage = {
   sessions: 2,
+  days: 5,
   agents: [
     { provider: "claude-code", sessions: 1 },
     { provider: "codex", sessions: 1 },
@@ -208,27 +209,80 @@ describe("formatReport, the title", () => {
    * way to tell which agents it covered, nor a weekly one from a daily one
    * except by reading the dates.
    */
-  it("names the grouping as a phrase rather than as a flag", () => {
-    const phrase = (grouping: "daily" | "weekly" | "monthly" | "session"): string =>
-      title(formatReport(fixture(), { ...WIDE, grouping })).join("\n");
+  it("names the grouping, taken from the shape the rows took", () => {
+    const heading = (grouping: "daily" | "weekly" | "monthly" | "session"): string =>
+      title(formatReport(fixture(), { ...WIDE, grouping }))[1] ?? "";
 
-    expect(phrase("daily")).toMatch(/Usage by day/u);
-    expect(phrase("weekly")).toMatch(/Usage by week/u);
-    expect(phrase("monthly")).toMatch(/Usage by month/u);
-    expect(phrase("session")).toMatch(/Usage by session/u);
+    expect(heading("daily")).toMatch(/Report - Daily/u);
+    expect(heading("weekly")).toMatch(/Report - Weekly/u);
+    expect(heading("monthly")).toMatch(/Report - Monthly/u);
+    expect(heading("session")).toMatch(/Report - Session/u);
   });
 
-  it("names every agent searched, with how many of its sessions were read", () => {
+  /**
+   * Read off the coverage rather than off a flag, so the heading describes what
+   * was searched rather than what was typed.
+   */
+  it("names the one agent in scope", () => {
+    const data = {
+      ...fixture(),
+      coverage: { ...COVERAGE, agents: [{ provider: "codex", sessions: 35 }] },
+    };
+
+    expect(title(formatReport(data, WIDE))[1]).toMatch(/Codex Token Usage Report - Daily/u);
+  });
+
+  it("says all agents when more than one was searched", () => {
+    expect(title(formatReport(fixture(), WIDE))[1]).toMatch(/All Agents Token Usage Report/u);
+  });
+
+  it("writes Claude Code as a reader would say it", () => {
+    const data = {
+      ...fixture(),
+      coverage: { ...COVERAGE, agents: [{ provider: "claude-code", sessions: 4 }] },
+    };
+
+    expect(title(formatReport(data, WIDE))[1]).toMatch(/Claude Code Token Usage Report/u);
+  });
+
+  /**
+   * The day count is the one fact neither the table nor the coverage line
+   * carries. A range says a fortnight; this says whether that fortnight held
+   * three days of work or fourteen.
+   */
+  it("says how much was read and over how many days", () => {
+    expect(title(formatReport(fixture(), WIDE)).join("\n")).toMatch(/2 sessions over 5 days/u);
+  });
+
+  it("counts one session and one day in the singular", () => {
+    const data = {
+      ...fixture(),
+      coverage: { ...COVERAGE, sessions: 1, days: 1, agents: [{ provider: "codex", sessions: 1 }] },
+    };
+
+    expect(title(formatReport(data, WIDE)).join("\n")).toMatch(/1 session over 1 day\b/u);
+  });
+
+  it("breaks the sessions down per agent when more than one was searched", () => {
     const text = title(formatReport(fixture(), WIDE)).join("\n");
 
     expect(text).toMatch(/Claude Code\s+1 session\b/u);
     expect(text).toMatch(/Codex\s+1 session\b/u);
   });
 
+  /** With one agent the heading already names it, so the breakdown would repeat it. */
+  it("gives no breakdown when the report was narrowed to one agent", () => {
+    const data = {
+      ...fixture(),
+      coverage: { ...COVERAGE, agents: [{ provider: "codex", sessions: 35 }] },
+    };
+
+    expect(title(formatReport(data, WIDE)).join("\n")).not.toMatch(/Codex\s+35 sessions/u);
+  });
+
   /**
    * A reader who sees no Codex row wants to know whether Codex was searched and
-   * found empty, or was never in scope. Only the coverage can answer that, so the
-   * agent is listed on its count rather than on whether it produced a bucket.
+   * found empty, or was never in scope. Only the coverage can answer that.
    */
   it("lists an agent that contributed no rows", () => {
     const data = {
@@ -243,17 +297,6 @@ describe("formatReport, the title", () => {
     };
 
     expect(title(formatReport(data, WIDE)).join("\n")).toMatch(/Codex\s+0 sessions/u);
-  });
-
-  it("names one agent alone when the report was narrowed to it", () => {
-    const data = {
-      ...fixture(),
-      coverage: { ...COVERAGE, agents: [{ provider: "codex", sessions: 35 }] },
-    };
-    const text = title(formatReport(data, WIDE)).join("\n");
-
-    expect(text).toMatch(/Codex\s+35 sessions/u);
-    expect(text).not.toMatch(/Claude Code/u);
   });
 
   it("says so when no agent was found at all", () => {
@@ -273,8 +316,10 @@ describe("formatReport, the title", () => {
   });
 
   it("draws every line of the title box to one length", () => {
-    const box = title(formatReport(fixture(), WIDE)).filter((line) => line !== "");
-    expect(new Set(box.map((line) => line.length)).size).toBe(1);
+    for (const data of [fixture(), nestedFixture()]) {
+      const box = title(formatReport(data, WIDE)).filter((line) => line !== "");
+      expect(new Set(box.map((line) => line.length)).size).toBe(1);
+    }
   });
 
   it("puts a blank line between the title and the table", () => {
@@ -529,8 +574,10 @@ describe("formatReport, nested agents", () => {
     };
     const lines = formatReport(data, { ...WIDE, nested: true, grouping: "session" });
 
-    expect(lines.join("\n")).not.toMatch(/All/u);
-    expect(lines.join("\n")).not.toMatch(/- claude-code/u);
+    // The table only: the title says "All Agents" because both were searched,
+    // which is about scope rather than about nesting.
+    expect(table(lines).join("\n")).not.toMatch(/All/u);
+    expect(table(lines).join("\n")).not.toMatch(/- claude-code/u);
     // The id survives, which it does not through a merge.
     expect(body(lines)[0]).toMatch(/019f838c-9/u);
   });
