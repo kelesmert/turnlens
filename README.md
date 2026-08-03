@@ -124,6 +124,10 @@ A report reads the agents' own transcripts, so it works whether or not you have
 ever run the watcher. Nothing is written and no session is followed.
 
 ```text
+╭──────────────────────────╮
+│   Claude Code, by day    │
+╰──────────────────────────╯
+
 ┌────────────┬─────────────┬──────────────┬──────────────┬─────────────┐
 │ Date       │ Models      │        Input │       Output │  Cost (USD) │
 ├────────────┼─────────────┼──────────────┼──────────────┼─────────────┤
