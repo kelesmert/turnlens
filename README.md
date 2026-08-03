@@ -124,11 +124,14 @@ A report reads the agents' own transcripts, so it works whether or not you have
 ever run the watcher. Nothing is written and no session is followed.
 
 ```text
-╭────────────────────────────────────────────╮
-│   Claude Code Token Usage Report - Daily   │
-│                                            │
-│   28 sessions over 10 days                 │
-╰────────────────────────────────────────────╯
+╭───────────────────────────────────────────────────────────────╮
+│   Claude Code Token Usage Report - Daily                      │
+│                                                               │
+│   28 sessions over 10 days                                    │
+│                                                               │
+│   2026-07-25 to 2026-08-04, Europe/Istanbul                   │
+│   Priced at today's rates, from litellm@sha256:ba37bb46dc46   │
+╰───────────────────────────────────────────────────────────────╯
 
 ┌────────────┬─────────────┬──────────────┬──────────────┬─────────────┐
 │ Date       │ Models      │        Input │       Output │  Cost (USD) │
@@ -157,7 +160,9 @@ list. Model names are shortened for reading; `--json` keeps the full identifier.
   --help               Show this message
 ```
 
-Days are your local days, and every report says which timezone it used.
+Days are your local days, and every report says which timezone it used. The box
+above the table says what the figures cover: how much was read, over what window,
+priced against which list, and how many turns could not be priced at all.
 
 **A report and a CSV can disagree, on purpose.** A report prices every turn at
 today's rates, because a transcript records tokens and not the rate that applied
