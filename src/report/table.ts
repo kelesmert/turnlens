@@ -69,6 +69,8 @@ export interface RenderOptions {
   /** True when more than one agent is in scope, which turns on nesting. */
   readonly nested: boolean;
   readonly grouping: Grouping;
+  /** Display names of the agents covered. Empty means every agent on the machine. */
+  readonly agents: readonly string[];
 }
 
 /**
@@ -98,6 +100,7 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
   }
 
   return [
+    ...formatTitle(options),
     rule(columns, "top"),
     header,
     rule(columns, "mid"),
@@ -106,6 +109,51 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
     ...coverage,
   ];
 }
+
+/**
+ * The banner above the table: which agents it covers, and how it is grouped.
+ *
+ * These are the two facts the table never carried. Saved to a file, a report
+ * gave no way to tell a Codex one from a Claude Code one, and a weekly one from
+ * a daily one only by reading the dates. Everything else a reader needs is in
+ * the coverage line under the table, and is deliberately not repeated here.
+ *
+ * Rounded corners against the table's square ones, which is the distinction
+ * ccusage draws too: the box that frames data and the box that labels it should
+ * not look like the same thing.
+ */
+function formatTitle(options: RenderOptions): readonly string[] {
+  const scope = options.agents.length === 0 ? "All agents" : options.agents.join(" and ");
+  const text = `${scope}, ${GROUPING_PHRASE[options.grouping]}`;
+  const span = TITLE_BORDER.horizontal.repeat(text.length + TITLE_PADDING * 2);
+  const pad = " ".repeat(TITLE_PADDING);
+
+  return [
+    `${TITLE_BORDER.topLeft}${span}${TITLE_BORDER.topRight}`,
+    `${BORDER.vertical}${pad}${text}${pad}${BORDER.vertical}`,
+    `${TITLE_BORDER.botLeft}${span}${TITLE_BORDER.botRight}`,
+    "",
+  ];
+}
+
+/** How each grouping reads in a sentence, rather than as a flag. */
+const GROUPING_PHRASE: Readonly<Record<Grouping, string>> = {
+  daily: "by day",
+  weekly: "by week",
+  monthly: "by month",
+  session: "by session",
+};
+
+const TITLE_PADDING = 3;
+
+/** Rounded, so the label around the table is not mistaken for part of it. */
+const TITLE_BORDER = {
+  horizontal: "─",
+  topLeft: "╭",
+  topRight: "╮",
+  botLeft: "╰",
+  botRight: "╯",
+} as const;
 
 /**
  * A horizontal rule matching the column layout, at the junction set it needs.
@@ -172,8 +220,11 @@ function formatBody(
     for (const label of distinctLabels(buckets)) {
       if (rows.length > 0) rows.push(separator);
 
+      // The period total's models are exactly the union of the rows beneath it,
+      // so printing them says nothing twice and makes the tallest row in the
+      // table out of a repeat. The agents below carry the answer.
       const group = buckets.filter((bucket) => bucket.label === label);
-      rows.push(...row(mergeBuckets(group, label), { label, agent: "All" }));
+      rows.push(...row(mergeBuckets(group, label), { label, agent: "All", models: [] }));
       for (const bucket of group) {
         rows.push(...row(bucket, { label: ABSENT, agent: `- ${bucket.provider ?? ""}` }));
       }
@@ -195,6 +246,8 @@ function distinctLabels(buckets: readonly Bucket[]): readonly string[] {
 interface RowOverrides {
   readonly label: string;
   readonly agent?: string;
+  /** Set empty on a period total, whose models are the union of the rows below. */
+  readonly models?: readonly string[];
 }
 
 /**
@@ -344,7 +397,9 @@ function describeValues(
     agent: [overrides.agent ?? bucket.provider ?? ""],
     // One model per line, bulleted. A list read down needs no separator, and the
     // bullet is what tells a two-model row from a row whose neighbour ran over.
-    models: bucket.models.map((id) => `${MODEL_BULLET}${names.get(id) ?? id}`),
+    models: (overrides.models ?? bucket.models).map(
+      (id) => `${MODEL_BULLET}${names.get(id) ?? id}`,
+    ),
     input: [count(bucket.usage.inputUncached)],
     output: [count(bucket.usage.output)],
     cacheCreate: [count(bucket.usage.cacheCreation5m + bucket.usage.cacheCreation1h)],

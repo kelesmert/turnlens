@@ -36,9 +36,20 @@ const COVERAGE: Coverage = {
   pricingVersion: "litellm@sha256:abcdef123456",
 };
 
+/**
+ * The table itself, with the title box above it discarded.
+ *
+ * Found by looking for the top rule rather than by counting lines, so a change
+ * to the title cannot silently shift every assertion in this file by four.
+ */
+function table(lines: readonly string[]): readonly string[] {
+  const top = lines.findIndex((line) => line.startsWith("┌"));
+  return top === -1 ? lines : lines.slice(top);
+}
+
 /** The heading row, which sits under the table's top rule. */
 function header(lines: readonly string[]): string {
-  return lines[1] ?? "";
+  return table(lines)[1] ?? "";
 }
 
 /**
@@ -48,7 +59,7 @@ function header(lines: readonly string[]): string {
  * dates, so it cannot be told from a data row by what it says.
  */
 function body(lines: readonly string[]): readonly string[] {
-  const rows = lines.slice(3);
+  const rows = table(lines).slice(3);
   const bottom = rows.findIndex((line) => line.startsWith("└"));
   const beforeTotal = rows.slice(0, bottom === -1 ? rows.length : bottom);
   const totalRule = beforeTotal.findLastIndex((line) => line.startsWith("├"));
@@ -89,7 +100,13 @@ function unpricedFixture(): ReportData {
   };
 }
 
-const WIDE = { width: 200, compact: false, nested: false, grouping: "daily" } as const;
+const WIDE = {
+  width: 200,
+  compact: false,
+  nested: false,
+  grouping: "daily",
+  agents: ["Codex"],
+} as const;
 
 describe("formatReport, column tiers", () => {
   it("shows the cache and total-token columns when there is room", () => {
@@ -181,6 +198,65 @@ describe("formatReport, column tiers", () => {
   });
 });
 
+describe("formatReport, the title", () => {
+  /**
+   * The two facts the table never carried. Saved to a file, a report gave no way
+   * to tell a Codex one from a Claude Code one, and a weekly one from a daily one
+   * only by reading the dates.
+   */
+  it("names the agent and the grouping", () => {
+    const title = formatReport(fixture(), WIDE)[1] ?? "";
+
+    expect(title).toMatch(/Codex/u);
+    expect(title).toMatch(/by day/u);
+  });
+
+  it("reads each grouping as a phrase rather than as a flag", () => {
+    const phrase = (grouping: "weekly" | "monthly" | "session"): string =>
+      formatReport(fixture(), { ...WIDE, grouping })[1] ?? "";
+
+    expect(phrase("weekly")).toMatch(/by week/u);
+    expect(phrase("monthly")).toMatch(/by month/u);
+    expect(phrase("session")).toMatch(/by session/u);
+  });
+
+  /**
+   * Naming both agents would be true and would say less. The point of the phrase
+   * is that the report was not narrowed to one.
+   */
+  it("says every agent when none was named", () => {
+    expect(formatReport(fixture(), { ...WIDE, agents: [] })[1]).toMatch(/All agents/u);
+  });
+
+  it("joins two named agents", () => {
+    const title = formatReport(fixture(), { ...WIDE, agents: ["Claude Code", "Codex"] })[1] ?? "";
+
+    expect(title).toMatch(/Claude Code and Codex/u);
+  });
+
+  /** Rounded, so the box that labels the table is not read as part of it. */
+  it("draws the title box with rounded corners and closes it", () => {
+    const lines = formatReport(fixture(), WIDE);
+
+    expect(lines[0]?.startsWith("╭")).toBe(true);
+    expect(lines[0]?.endsWith("╮")).toBe(true);
+    expect(lines[2]?.startsWith("╰")).toBe(true);
+    expect(lines[2]?.endsWith("╯")).toBe(true);
+    expect(lines[0]).toHaveLength(lines[1]?.length ?? 0);
+  });
+
+  it("puts a blank line between the title and the table", () => {
+    expect(formatReport(fixture(), WIDE)[3]).toBe("");
+  });
+
+  /** An empty report has a coverage line and nothing to label. */
+  it("prints no title when there is no table", () => {
+    const empty = { ...fixture(), buckets: [] };
+
+    expect(formatReport(empty, WIDE).join("\n")).not.toMatch(/[╭╰]/u);
+  });
+});
+
 describe("formatReport, borders", () => {
   /**
    * A box whose lines disagree about their length is a box with a hole in it,
@@ -195,9 +271,9 @@ describe("formatReport, borders", () => {
 
     for (const grouping of ["daily", "session"] as const) {
       for (const width of [80, 100, 120, 174]) {
-        const lines = formatReport(data, { ...WIDE, width, grouping });
-        const table = lines.slice(0, lines.findIndex((line) => line.startsWith("└")) + 1);
-        const widths = new Set(table.map((line) => line.length));
+        const lines = table(formatReport(data, { ...WIDE, width, grouping }));
+        const boxed = lines.slice(0, lines.findIndex((line) => line.startsWith("└")) + 1);
+        const widths = new Set(boxed.map((line) => line.length));
 
         expect(widths.size, `${grouping} at ${width}: ${[...widths].join()}`).toBe(1);
       }
@@ -205,7 +281,7 @@ describe("formatReport, borders", () => {
   });
 
   it("closes the box: a top rule, a heading rule, and a bottom rule", () => {
-    const lines = formatReport(fixture(), WIDE);
+    const lines = table(formatReport(fixture(), WIDE));
 
     expect(lines[0]?.startsWith("┌")).toBe(true);
     expect(lines[0]?.endsWith("┐")).toBe(true);
@@ -221,7 +297,7 @@ describe("formatReport, borders", () => {
    * against a remembered total.
    */
   it("charges one rule per column boundary to the width budget", () => {
-    const lines = formatReport(fixture(), { ...WIDE, width: undefined });
+    const lines = table(formatReport(fixture(), { ...WIDE, width: undefined }));
     const columns = cells(lines[1] ?? "").length;
 
     for (const line of [lines[0], lines[1], lines[2]]) {
@@ -261,8 +337,22 @@ describe("formatReport, borders", () => {
     expect(rules).toHaveLength(3);
   });
 
+  /**
+   * A period total's models are exactly the union of the agents beneath it, so
+   * printing them repeats the answer and makes the tallest row in the table out
+   * of a repeat.
+   */
+  it("leaves the models cell empty on a period total", () => {
+    const lines = formatReport(nestedFixture(), { ...WIDE, nested: true });
+    const [parent, ...children] = body(lines);
+
+    expect(cells(parent ?? "")[1]).toBe("All");
+    expect(cells(parent ?? "")[2]).toBe("");
+    expect(cells(children[0] ?? "")[2]).toMatch(/opus-5/u);
+  });
+
   it("draws the box when there is no terminal, as a redirect has none", () => {
-    const lines = formatReport(fixture(), { ...WIDE, width: undefined });
+    const lines = table(formatReport(fixture(), { ...WIDE, width: undefined }));
 
     expect(lines[0]?.startsWith("┌")).toBe(true);
   });
@@ -321,13 +411,11 @@ describe("formatReport, rows", () => {
   });
 
   it("sizes the models column to the longest single name, not the joined list", () => {
-    const short = formatReport(
-      { ...fixture(), buckets: [bucket({ models: ["opus-5"] })] },
-      WIDE,
+    const short = table(
+      formatReport({ ...fixture(), buckets: [bucket({ models: ["opus-5"] })] }, WIDE),
     );
-    const long = formatReport(
-      { ...fixture(), buckets: [bucket({ models: ["opus-5", "haiku-4-5"] })] },
-      WIDE,
+    const long = table(
+      formatReport({ ...fixture(), buckets: [bucket({ models: ["opus-5", "haiku-4-5"] })] }, WIDE),
     );
 
     // Two models, but the wider name is only three characters longer than the
