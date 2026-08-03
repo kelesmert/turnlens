@@ -110,7 +110,13 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
       // transcript is not a reason to carry part of a prompt around.
       includePromptPreview: false,
     })) {
-      const day = localDate(turn.at, options.timeZone);
+      // Dated by the prompt, not by the reply. Under the closing timestamp,
+      // which day owned a turn depended on how long the agent thought: the same
+      // prompt sent at 23:55 landed on one day if the answer took four minutes
+      // and on the next if it took twelve. That is a variable the user neither
+      // sees nor controls. It follows the rule the project already keeps for
+      // interrupted work, that a cost belongs to the prompt that caused it.
+      const day = localDate(turn.startedAt ?? turn.at, options.timeZone);
       if (!withinWindow(day, options.window)) continue;
 
       days.add(day);
@@ -270,11 +276,14 @@ function keyFor(
   prefixLength: number,
 ): BucketKey {
   const perAgent = options.agents.length > 1 ? { provider: turn.provider } : {};
+  // The same instant the window filter used. A turn counted into one day and
+  // labelled with another is a row that does not add up to its own heading.
+  const dated = turn.startedAt ?? turn.at;
 
   // One session broken into days: the grouping word says session, but the rows
   // are days, because the filter has already reduced it to one session.
   if (options.grouping === "session" && options.sessionBreakdown === "daily") {
-    return { label: bucketLabel(turn.at, "daily", options.timeZone), ...perAgent };
+    return { label: bucketLabel(dated, "daily", options.timeZone), ...perAgent };
   }
 
   if (options.grouping === "session") {
@@ -286,7 +295,7 @@ function keyFor(
   }
 
   return {
-    label: bucketLabel(turn.at, options.grouping satisfies Grouping as PeriodGrouping, options.timeZone),
+    label: bucketLabel(dated, options.grouping satisfies Grouping as PeriodGrouping, options.timeZone),
     ...perAgent,
   };
 }

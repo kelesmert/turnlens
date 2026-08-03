@@ -14,6 +14,14 @@ export interface AssembledTurn {
   readonly turnId?: string;
   /** Timestamp of the event that closed the turn. */
   readonly at: string;
+  /**
+   * Timestamp of the prompt that opened the turn.
+   *
+   * Absent when the turn had no start event to observe, which is every turn
+   * already in progress when a watcher attaches. `at` is the fallback, and it is
+   * the only one available in that case.
+   */
+  readonly startedAt?: string;
   readonly usage: TokenUsage;
   readonly toolCalls: Readonly<Record<string, number>>;
   readonly model: string;
@@ -56,6 +64,7 @@ export class TurnAssembler {
   #seenCallKeys = new Set<string>();
   #toolCalls = new Map<string, number>();
   #turnId: string | undefined;
+  #startedAt: string | undefined;
   #promptPreview = "";
   #model = "";
   #reasoningEffort = "";
@@ -77,6 +86,7 @@ export class TurnAssembler {
     switch (event.kind) {
       case "turnStart":
         if (event.turnId !== undefined) this.#turnId = event.turnId;
+        this.#startedAt = event.at;
         return undefined;
 
       case "meta":
@@ -153,6 +163,7 @@ export class TurnAssembler {
         : this.#pending;
 
     const turnId = this.#turnId;
+    const startedAt = this.#startedAt;
     const rateLimits = this.#rateLimits;
     const toolCalls = Object.fromEntries(this.#toolCalls);
     const model = this.#model;
@@ -172,6 +183,7 @@ export class TurnAssembler {
       reasoningEffort,
       promptPreview,
       ...(turnId === undefined ? {} : { turnId }),
+      ...(startedAt === undefined ? {} : { startedAt }),
       ...(request.durationMs === undefined ? {} : { durationMs: request.durationMs }),
       ...(rateLimits === undefined ? {} : { rateLimits }),
     };
@@ -191,6 +203,9 @@ export class TurnAssembler {
     this.#seenCallKeys.clear();
     this.#toolCalls = new Map();
     this.#turnId = undefined;
+    // Cleared, unlike `model`. A turn that saw no start of its own has no start,
+    // and inheriting the previous turn's would date it by someone else's prompt.
+    this.#startedAt = undefined;
     this.#promptPreview = "";
     this.#rateLimits = undefined;
   }

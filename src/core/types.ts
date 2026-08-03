@@ -100,7 +100,16 @@ export interface NormalizedTurn {
   readonly turnNumber: number;
   readonly turnId: string;
   readonly status: TurnStatus;
+  /** When the turn closed. This is the timestamp the CSV records. */
   readonly at: string;
+  /**
+   * When the prompt that opened the turn was sent.
+   *
+   * Absent for a turn already running when a watcher attached, which is the only
+   * case with no start to observe. A report dates a turn by this rather than by
+   * `at`, so which day owns a turn does not depend on how long the agent thought.
+   */
+  readonly startedAt?: string;
   readonly usage: TokenUsage;
   readonly toolCalls: Readonly<Record<string, number>>;
   readonly model: string;

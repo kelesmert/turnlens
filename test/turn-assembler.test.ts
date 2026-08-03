@@ -268,3 +268,74 @@ describe("TurnAssembler with per-event counters", () => {
     expect(turns.map((turn) => turn.usage.total)).toEqual([100, 40]);
   });
 });
+
+describe("TurnAssembler, the timestamp a turn started at", () => {
+  /**
+   * Kept so a report can date a turn by its prompt. Under the closing timestamp,
+   * which day owned a turn depended on how long the agent thought.
+   */
+  it("takes it from the turn's own start event", () => {
+    const turns = drain(
+      [
+        { kind: "turnStart", at: "2026-07-25T20:55:00.000Z", turnId: "turn-a" },
+        { kind: "usage", at: "x", usage: cumulative(1_000) },
+        { kind: "turnEnd", at: "2026-07-25T21:10:00.000Z", turnId: "turn-a" },
+      ],
+      "cumulative",
+    );
+
+    expect(turns[0]?.startedAt).toBe("2026-07-25T20:55:00.000Z");
+    expect(turns[0]?.at).toBe("2026-07-25T21:10:00.000Z");
+  });
+
+  /**
+   * The reset is the whole risk here. `model` deliberately persists across a
+   * boundary; a start must not, or the second turn is dated by the first one's
+   * prompt and a report moves usage to a day nothing happened on.
+   */
+  it("does not let one turn inherit the previous turn's start", () => {
+    const turns = drain(
+      [
+        { kind: "turnStart", at: "2026-07-25T20:00:00.000Z", turnId: "turn-a" },
+        { kind: "usage", at: "x", usage: cumulative(1_000) },
+        { kind: "turnEnd", at: "2026-07-25T20:30:00.000Z", turnId: "turn-a" },
+        { kind: "usage", at: "y", usage: cumulative(2_000) },
+        { kind: "turnEnd", at: "2026-07-26T09:00:00.000Z", turnId: "turn-b" },
+      ],
+      "cumulative",
+    );
+
+    expect(turns[0]?.startedAt).toBe("2026-07-25T20:00:00.000Z");
+    expect("startedAt" in (turns[1] ?? {})).toBe(false);
+  });
+
+  /**
+   * Absent rather than guessed. A watcher attaching mid-turn never saw the
+   * prompt, and `at` is the only timestamp that case has.
+   */
+  it("omits it when no start was observed", () => {
+    const turns = drain(
+      [
+        { kind: "usage", at: "x", usage: cumulative(1_000) },
+        { kind: "turnEnd", at: "2026-07-25T21:10:00.000Z", turnId: "turn-a" },
+      ],
+      "cumulative",
+    );
+
+    expect("startedAt" in (turns[0] ?? {})).toBe(false);
+  });
+
+  it("keeps the start across an abort, which is still a turn that was asked for", () => {
+    const turns = drain(
+      [
+        { kind: "turnStart", at: "2026-07-25T20:55:00.000Z", turnId: "turn-a" },
+        { kind: "usage", at: "x", usage: cumulative(1_000) },
+        { kind: "turnAbort", at: "2026-07-25T21:10:00.000Z", turnId: "turn-a" },
+      ],
+      "cumulative",
+    );
+
+    expect(turns[0]?.status).toBe("aborted");
+    expect(turns[0]?.startedAt).toBe("2026-07-25T20:55:00.000Z");
+  });
+});

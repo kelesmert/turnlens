@@ -250,3 +250,85 @@ describe("resolveSessionQuery", () => {
     await expect(resolveSessionQuery("zzzzzzzz", agents)).rejects.toThrow(/zzzzzzzz/u);
   });
 });
+
+/**
+ * One Codex home holding a session whose first turn crosses local midnight.
+ *
+ * The prompt lands at 23:52 on 2026-07-25 in Europe/Istanbul and the turn closes
+ * at 00:40 the next day. A second turn sits wholly inside 2026-07-26, so a report
+ * that dated everything by its close would put both on one day.
+ */
+async function midnightAdapter(): Promise<ProviderAdapter> {
+  const home = await mkdtemp(join(tmpdir(), "turnlens-midnight-"));
+  const dayDir = join(home, "sessions", "2026", "07", "25");
+  await mkdir(dayDir, { recursive: true });
+  await copyFile(
+    join(import.meta.dirname, "fixtures", "codex-midnight-session.jsonl"),
+    join(dayDir, "rollout-2026-07-25T20-52-00-cccccccc-0000-0000-0000-000000000003.jsonl"),
+  );
+
+  return createCodexAdapter(resolveCodexPaths({ CODEX_HOME: home }));
+}
+
+describe("collect, a turn that crosses local midnight", () => {
+  /**
+   * Dated by the prompt, not by the reply. Under the closing timestamp, which
+   * day owned a turn depended on how long the agent thought, which is a variable
+   * the user neither sees nor controls.
+   */
+  it("counts the turn on the day its prompt was sent", async () => {
+    const data = await collect({
+      agents: [await midnightAdapter()],
+      pricing: await offlineResolver(),
+      grouping: "daily",
+      window: {},
+      timeZone: "Europe/Istanbul",
+    });
+    const byDay = Object.fromEntries(data.buckets.map((b) => [b.label, b.usage.total]));
+
+    expect(byDay["2026-07-25"]).toBe(11_000);
+    expect(byDay["2026-07-26"]).toBe(5_500);
+  });
+
+  /** Moving a turn between days must never change what the two days sum to. */
+  it("moves the turn without changing the total", async () => {
+    const options = {
+      agents: [await midnightAdapter()],
+      pricing: await offlineResolver(),
+      window: {},
+      timeZone: "Europe/Istanbul",
+    };
+    const daily = await collect({ ...options, grouping: "daily" });
+    const monthly = await collect({
+      agents: [await midnightAdapter()],
+      pricing: await offlineResolver(),
+      window: {},
+      timeZone: "Europe/Istanbul",
+      grouping: "monthly",
+    });
+
+    const sum = (data: Awaited<ReturnType<typeof collect>>): number =>
+      data.buckets.reduce((total, bucket) => total + bucket.usage.total, 0);
+
+    expect(sum(daily)).toBe(16_500);
+    expect(sum(monthly)).toBe(16_500);
+  });
+
+  /**
+   * The window filter and the row label must read the same instant. A turn
+   * counted into one day and printed under another is a row that does not add up
+   * to its own heading.
+   */
+  it("filters by the same day it labels", async () => {
+    const data = await collect({
+      agents: [await midnightAdapter()],
+      pricing: await offlineResolver(),
+      grouping: "daily",
+      window: { until: "2026-07-25" },
+      timeZone: "Europe/Istanbul",
+    });
+
+    expect(data.buckets.map((bucket) => bucket.label)).toEqual(["2026-07-25"]);
+    expect(data.buckets[0]?.usage.total).toBe(11_000);
+  });
+});

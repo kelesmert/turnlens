@@ -89,6 +89,7 @@ export function normaliseTurn(input: NormaliseInput): NormalizedTurn {
     turnId: resolveTurnId(assembled, session.sessionId),
     status: assembled.status,
     at: assembled.at,
+    ...(assembled.startedAt === undefined ? {} : { startedAt: assembled.startedAt }),
     usage: assembled.usage,
     toolCalls: assembled.toolCalls,
     model: assembled.model,
