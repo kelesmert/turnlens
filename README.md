@@ -123,6 +123,23 @@ turnlens report                                   # every agent in one table
 A report reads the agents' own transcripts, so it works whether or not you have
 ever run the watcher. Nothing is written and no session is followed.
 
+```text
+┌────────────┬─────────────┬──────────────┬──────────────┬─────────────┐
+│ Date       │ Models      │        Input │       Output │  Cost (USD) │
+├────────────┼─────────────┼──────────────┼──────────────┼─────────────┤
+│ 2026-08-03 │ - haiku-4-5 │        3,753 │      384,852 │     $100.46 │
+│            │ - opus-5    │              │              │             │
+├────────────┼─────────────┼──────────────┼──────────────┼─────────────┤
+│ 2026-08-02 │ - opus-5    │        9,033 │      252,133 │      $40.29 │
+├────────────┼─────────────┼──────────────┼──────────────┼─────────────┤
+│ TOTAL      │ - haiku-4-5 │       12,786 │      636,985 │     $140.75 │
+│            │ - opus-5    │              │              │             │
+└────────────┴─────────────┴──────────────┴──────────────┴─────────────┘
+```
+
+A period that used more than one model gets a line per model rather than a cut
+list. Model names are shortened for reading; `--json` keeps the full identifier.
+
 ```
   --id <session>       One session only. Goes with the word `session`.
   --since <date>       Earliest day to include, YYYY-MM-DD. Inclusive.
@@ -230,6 +247,12 @@ Worth knowing before you trust a number:
   nothing in a session file says which tier a request used.
 - **Turns that closed before you started watching are not recorded.** TurnLens
   follows a transcript from where it is when it starts.
+- **Column widths are counted in characters, not in terminal cells.** The two
+  agree for Latin text, Turkish included. They do not for CJK or emoji, so a
+  session named in Japanese or with an emoji in it can sit the report's
+  right-hand border a column or two out of line. This is a measurement gap, not a
+  font problem, and it is known: terminals disagree with each other about emoji
+  width, so a partial fix would be exact for CJK and a guess for emoji.
 
 ## Development
 
