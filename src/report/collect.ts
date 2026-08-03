@@ -131,34 +131,77 @@ export async function resolveSessionQuery(
   query: string,
   agents: readonly ProviderAdapter[],
 ): Promise<SessionRef> {
-  const matches: { readonly adapter: ProviderAdapter; readonly path: string }[] = [];
+  const matches = await matchSessions(query, agents);
+
+  const only = matches[0];
+  if (only === undefined) throw noSessionMatches(query, agents);
+  if (matches.length > 1) throw tooManySessionsMatch(query, matches);
+
+  return await describeMatch(only);
+}
+
+/** One transcript an id or prefix matched, and the agent that owns it. */
+export interface SessionMatch {
+  readonly adapter: ProviderAdapter;
+  readonly path: string;
+  /** The id as it appears in a report and in an error, which is the filename. */
+  readonly sessionId: string;
+}
+
+/**
+ * Every session an id or prefix matches, across every agent given.
+ *
+ * Exposed alongside `resolveSessionQuery` because the two modes want different
+ * things from ambiguity. A report cannot ask, since its output is piped, so it
+ * takes the error. Watching is already a conversation, so it can list the
+ * candidates and let the user pick, which is what `resolveSessionQuery` cannot do
+ * without dragging a prompt into a module that has no business owning one.
+ *
+ * Cheap by construction: this reads directory entries and opens nothing. Only the
+ * chosen match is described, which is where a name comes from.
+ */
+export async function matchSessions(
+  query: string,
+  agents: readonly ProviderAdapter[],
+): Promise<readonly SessionMatch[]> {
+  const matches: SessionMatch[] = [];
 
   for (const adapter of agents) {
     for (const path of await adapter.listSessionPaths()) {
-      if (basename(path, ".jsonl").includes(query)) matches.push({ adapter, path });
+      const sessionId = basename(path, ".jsonl");
+      if (sessionId.includes(query)) matches.push({ adapter, path, sessionId });
     }
   }
 
-  const only = matches[0];
-  if (only === undefined) {
-    throw new Error(
-      `No session matches ${query}.\n` +
-        `Searched ${agents.map((agent) => agent.id).join(" and ")}. ` +
-        "Run the report grouped by session to see the ids there are.",
-    );
-  }
+  return matches;
+}
 
-  if (matches.length > 1) {
-    const candidates = matches
-      .slice(0, 10)
-      .map((match) => `  ${match.adapter.id}  ${basename(match.path, ".jsonl")}`);
-    throw new Error(
-      `${matches.length} sessions match ${query}. Name one of them:\n${candidates.join("\n")}` +
-        (matches.length > candidates.length ? "\n  ..." : ""),
-    );
-  }
+export async function describeMatch(match: SessionMatch): Promise<SessionRef> {
+  return await match.adapter.describeSession(match.path);
+}
 
-  return await only.adapter.describeSession(only.path);
+export function noSessionMatches(query: string, agents: readonly ProviderAdapter[]): Error {
+  return new Error(
+    `No session matches ${query}.\n` +
+      `Searched ${agents.map((agent) => agent.id).join(" and ")}. ` +
+      "Run the report grouped by session to see the ids there are.",
+  );
+}
+
+export function tooManySessionsMatch(
+  query: string,
+  matches: readonly SessionMatch[],
+): Error {
+  const candidates = matches.slice(0, 10).map((match) => describeCandidate(match));
+  return new Error(
+    `${matches.length} sessions match ${query}. Name one of them:\n${candidates.join("\n")}` +
+      (matches.length > candidates.length ? "\n  ..." : ""),
+  );
+}
+
+/** How a candidate reads in a list: its agent, then its id. */
+export function describeCandidate(match: SessionMatch): string {
+  return `  ${match.adapter.id}  ${match.sessionId}`;
 }
 
 /** Which sessions to read, and which adapter parses each. */

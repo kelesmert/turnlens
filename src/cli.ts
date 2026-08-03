@@ -7,7 +7,14 @@ import { resolvePricingCachePath } from "./pricing/cache.js";
 import { createPricingResolver, refreshPricing } from "./pricing/resolver.js";
 import { AGENT_NAMES, countSessions, getAdapter, resolveAgentName } from "./providers/registry.js";
 import { resolveTimeZone } from "./report/buckets.js";
-import { collect, resolveSessionQuery } from "./report/collect.js";
+import {
+  collect,
+  describeCandidate,
+  describeMatch,
+  matchSessions,
+  noSessionMatches,
+  tooManySessionsMatch,
+} from "./report/collect.js";
 import { formatReportJson } from "./report/json.js";
 import { formatReport } from "./report/table.js";
 import { formatSessionBanner } from "./ui/banner.js";
@@ -19,6 +26,7 @@ import { summariseCsv } from "./ui/summary.js";
 import { runWatch } from "./watch.js";
 import type { CliOptions } from "./options.js";
 import type { ProviderAdapter, SessionRef } from "./core/types.js";
+import type { SessionMatch } from "./report/collect.js";
 import type { ProviderId } from "./providers/registry.js";
 import type { PricingResolver } from "./pricing/types.js";
 
@@ -130,9 +138,7 @@ function resolveAgentNameOrThrow(name: string): ProviderId {
 
 /** Follows one session forward, recording each turn as it closes. */
 async function watch(options: CliOptions, pricing: PricingResolver): Promise<void> {
-  const providerId = options.providerId ?? (await askWhichAgent());
-  const adapter = getAdapter(providerId);
-  const selected = await chooseWatchTarget(options, providerId, adapter);
+  const { session: selected, adapter } = await chooseWatchTarget(options);
 
   const includePromptPreview =
     options.previewChoice === "ask"
@@ -146,7 +152,9 @@ async function watch(options: CliOptions, pricing: PricingResolver): Promise<voi
   // under the user's home, not the working directory: it covers a session file,
   // which is machine-wide, so a per-directory lock would not be seen by a
   // watcher started elsewhere.
-  const lock = await acquireSessionLock(resolveSessionLockDir(), selected.path);
+  const lock = await acquireSessionLock(resolveSessionLockDir(), selected.path, {
+    notify: (line) => write([line]),
+  });
 
   // No terminal is spawned: the CLI runs in the terminal that invoked it, which
   // is why Ctrl+C simply stops monitoring.
@@ -189,20 +197,69 @@ async function watch(options: CliOptions, pricing: PricingResolver): Promise<voi
   }
 }
 
-/** The session to follow: the one named, or the one chosen from the list. */
-async function chooseWatchTarget(
-  options: CliOptions,
-  providerId: ProviderId,
-  adapter: ProviderAdapter,
-): Promise<SessionRef> {
+/** A session to follow, and the adapter that parses it. */
+interface WatchTarget {
+  readonly session: SessionRef;
+  readonly adapter: ProviderAdapter;
+}
+
+/**
+ * The session to follow: the one named, or the one chosen from the list.
+ *
+ * **An id names its own agent.** Given `--id` and no agent, every agent is
+ * searched and the one holding the session is the one used, so nobody is asked a
+ * question the id already answers. Asking and then searching only the chosen
+ * agent was the earlier behaviour, and it told a user that an existing session
+ * did not exist whenever they picked the other agent.
+ */
+async function chooseWatchTarget(options: CliOptions): Promise<WatchTarget> {
+  const scoped = scopedAgents(options.providerId);
+
   if (options.sessionIdQuery !== undefined) {
-    return await resolveSessionQuery(options.sessionIdQuery, [adapter]);
+    const match = await pickMatch(options.sessionIdQuery, scoped);
+    return { session: await describeMatch(match), adapter: match.adapter };
   }
 
+  const providerId = options.providerId ?? (await askWhichAgent());
+  const adapter = getAdapter(providerId);
   const sessions = (await adapter.listSessions()).slice(0, SESSION_LIST_LIMIT);
   if (sessions.length === 0) throw new Error(describeMissingSessions(providerId, adapter.roots));
 
-  return await selectSession(sessions);
+  return { session: await selectSession(sessions), adapter };
+}
+
+/**
+ * The one session an id names, asking when more than one answers to it.
+ *
+ * Watching is already a conversation, so ambiguity is a question rather than a
+ * failure. Two sessions under different agents sharing an id is close to
+ * impossible; a short prefix matching several under one agent is ordinary, and
+ * this covers both.
+ *
+ * Piped input cannot be asked, so it gets the same error the report gets.
+ */
+async function pickMatch(
+  query: string,
+  agents: readonly ProviderAdapter[],
+): Promise<SessionMatch> {
+  const matches = await matchSessions(query, agents);
+
+  const only = matches[0];
+  if (only === undefined) throw noSessionMatches(query, agents);
+  if (matches.length === 1) return only;
+  if (process.stdin.isTTY !== true) throw tooManySessionsMatch(query, matches);
+
+  write([
+    "",
+    `${matches.length} sessions match ${query}:`,
+    ...matches.map((match, index) => `${String(index + 1).padStart(3)}${describeCandidate(match)}`),
+  ]);
+
+  const answer = await ask(`\nSelect a session number, 1 to ${matches.length}: `);
+  const chosen = matches[Number.parseInt(answer.trim(), 10) - 1];
+  if (chosen === undefined) throw new Error(`Enter a number from 1 to ${matches.length}.`);
+
+  return chosen;
 }
 
 /**
