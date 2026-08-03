@@ -71,7 +71,11 @@ function formatBody(
 ): readonly string[] {
   const rows: string[] = [];
 
-  if (!options.nested) {
+  // Nesting groups rows that share a label, which only periods do. A session
+  // belongs to exactly one agent by construction, so nesting a session report
+  // would print a total row above a single child that repeats it, and the total
+  // would lose the session's id on the way through the merge.
+  if (!options.nested || options.grouping === "session") {
     for (const bucket of buckets) rows.push(row(bucket, columns, { label: bucket.label }));
   } else {
     for (const label of distinctLabels(buckets)) {

@@ -237,6 +237,24 @@ describe("formatReport, nested agents", () => {
   it("shows no agent column when only one agent is in scope", () => {
     expect(formatReport(fixture(), WIDE)[0]).not.toMatch(/Agent/u);
   });
+
+  /**
+   * A session belongs to exactly one agent, so a total row above it would repeat
+   * the single child beneath it, and the merge would lose the session's id on the
+   * way. The agent column stays; the nesting does not.
+   */
+  it("does not nest a session report, where every group has one member", () => {
+    const data = {
+      ...fixture(),
+      buckets: [{ ...bucket(), id: "019f838c-9", provider: "claude-code" }],
+    };
+    const lines = formatReport(data, { ...WIDE, nested: true, grouping: "session" });
+
+    expect(lines.join("\n")).not.toMatch(/All/u);
+    expect(lines.join("\n")).not.toMatch(/- claude-code/u);
+    // The id survives, which it does not through a merge.
+    expect(lines[2]).toMatch(/019f838c-9/u);
+  });
 });
 
 describe("formatReport, the session grouping", () => {
