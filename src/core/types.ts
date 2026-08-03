@@ -150,6 +150,24 @@ export interface ProviderAdapter {
    */
   listSessionsForReport(): Promise<readonly SessionRef[]>;
   /**
+   * Every transcript path, archived included, opening none of them.
+   *
+   * This is how an id is resolved. A session's id is its filename, so finding one
+   * is a path match and needs no name, no size and no modification time. The
+   * distinction is not pedantic: building a Claude Code listing reads the last
+   * 256 KB of every transcript to recover its title, measured at 78 ms and 6.6 MB
+   * of JSON against 12 ms for walking both agents' trees. Resolution must not go
+   * through the listing.
+   */
+  listSessionPaths(): Promise<readonly string[]>;
+  /**
+   * Resolves one transcript path into a full reference, name included.
+   *
+   * The counterpart to `listSessionPaths`: the walk finds the one session that
+   * matched, and only that one is described.
+   */
+  describeSession(path: string): Promise<SessionRef>;
+  /**
    * Converts one raw session record into zero or more events.
    *
    * `record` is untrusted input. An unrecognised or malformed shape must return

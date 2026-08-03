@@ -134,19 +134,54 @@ export async function listAllSessionsNewestFirst(
       continue;
     }
 
-    const sessionId = basename(path, ".jsonl");
-    const uuid = SESSION_UUID_PATTERN.exec(sessionId)?.[1]?.toLowerCase();
-
-    refs.push({
-      provider: "codex",
-      path,
-      sessionId,
-      sessionName: resolveSessionName(uuid, names),
-      lastActivityMs,
-    });
+    refs.push(describeAt(path, lastActivityMs, names));
   }
 
   return refs.sort((a, b) => b.lastActivityMs - a.lastActivityMs);
+}
+
+/**
+ * Every transcript path, archived included, opening none of them.
+ *
+ * The cheap half of a listing: enough to resolve an id, which is a filename, and
+ * nothing more. No `stat`, because ordering is not a question an id asks.
+ */
+export async function listAllSessionPaths(paths: CodexPaths): Promise<readonly string[]> {
+  return [
+    ...(await collectJsonlFiles(paths.sessionsRoot)),
+    ...(await collectJsonlFiles(paths.archivedSessionsRoot)),
+  ];
+}
+
+/** Resolves one transcript path into a reference, reading only what it needs. */
+export async function describeSessionAt(paths: CodexPaths, path: string): Promise<SessionRef> {
+  const names = await loadSessionNames(paths.sessionIndexFile);
+  let lastActivityMs = 0;
+  try {
+    lastActivityMs = (await stat(path)).mtimeMs;
+  } catch {
+    // Gone between matching and describing. The caller asked for this one file by
+    // name, so an absent timestamp is better than refusing to report on it.
+  }
+
+  return describeAt(path, lastActivityMs, names);
+}
+
+function describeAt(
+  path: string,
+  lastActivityMs: number,
+  names: ReadonlyMap<string, string>,
+): SessionRef {
+  const sessionId = basename(path, ".jsonl");
+  const uuid = SESSION_UUID_PATTERN.exec(sessionId)?.[1]?.toLowerCase();
+
+  return {
+    provider: "codex",
+    path,
+    sessionId,
+    sessionName: resolveSessionName(uuid, names),
+    lastActivityMs,
+  };
 }
 
 export function createCodexAdapter(paths: CodexPaths = resolveCodexPaths()): ProviderAdapter {
@@ -156,6 +191,8 @@ export function createCodexAdapter(paths: CodexPaths = resolveCodexPaths()): Pro
     roots: [paths.sessionsRoot],
     listSessions: () => listAllSessionsNewestFirst(paths),
     listSessionsForReport: () => listAllSessionsNewestFirst(paths, { includeArchived: true }),
+    listSessionPaths: () => listAllSessionPaths(paths),
+    describeSession: (path) => describeSessionAt(paths, path),
     parseRecord: parseCodexRecord,
   };
 }

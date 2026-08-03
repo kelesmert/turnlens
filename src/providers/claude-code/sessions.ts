@@ -99,6 +99,44 @@ export async function listAllSessionsNewestFirst(
   return refs.sort((a, b) => b.lastActivityMs - a.lastActivityMs);
 }
 
+/**
+ * Every transcript path, opening none of them.
+ *
+ * The cheap half of a listing, and here the difference is the whole point: the
+ * listing above reads the last 256 KB of every transcript to recover its title.
+ * An id is a filename, so resolving one needs none of that.
+ */
+export async function listAllSessionPaths(paths: ClaudeCodePaths): Promise<readonly string[]> {
+  const files: string[] = [];
+
+  for (const root of paths.projectRoots) {
+    for (const project of await listDirectories(root)) {
+      files.push(...(await listTranscripts(project)));
+    }
+  }
+
+  return files;
+}
+
+/** Resolves one transcript path into a reference, reading only that one's name. */
+export async function describeSessionAt(path: string): Promise<SessionRef> {
+  let lastActivityMs = 0;
+  try {
+    lastActivityMs = (await stat(path)).mtimeMs;
+  } catch {
+    // Gone between matching and describing. The caller named this one file, so an
+    // absent timestamp is better than refusing to report on it.
+  }
+
+  return {
+    provider: "claude-code",
+    path,
+    sessionId: basename(path, ".jsonl"),
+    sessionName: await readSessionName(path),
+    lastActivityMs,
+  };
+}
+
 export function createClaudeCodeAdapter(
   paths: ClaudeCodePaths = resolveClaudeCodePaths(),
 ): ProviderAdapter {
@@ -116,6 +154,8 @@ export function createClaudeCodeAdapter(
     // nothing in the report needs it: the total counts archived work either way,
     // and the coverage line does not itemise it.
     listSessionsForReport: () => listAllSessionsNewestFirst(paths),
+    listSessionPaths: () => listAllSessionPaths(paths),
+    describeSession: (path) => describeSessionAt(path),
     parseRecord,
   };
 }
