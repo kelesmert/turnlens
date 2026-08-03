@@ -69,8 +69,6 @@ export interface RenderOptions {
   /** True when more than one agent is in scope, which turns on nesting. */
   readonly nested: boolean;
   readonly grouping: Grouping;
-  /** Display names of the agents covered. Empty means every agent on the machine. */
-  readonly agents: readonly string[];
 }
 
 /**
@@ -100,7 +98,7 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
   }
 
   return [
-    ...formatTitle(options),
+    ...formatTitle(data.coverage, options),
     rule(columns, "top"),
     header,
     rule(columns, "mid"),
@@ -122,18 +120,42 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
  * ccusage draws too: the box that frames data and the box that labels it should
  * not look like the same thing.
  */
-function formatTitle(options: RenderOptions): readonly string[] {
-  const scope = options.agents.length === 0 ? "All agents" : options.agents.join(" and ");
-  const text = `${scope}, ${GROUPING_PHRASE[options.grouping]}`;
-  const span = TITLE_BORDER.horizontal.repeat(text.length + TITLE_PADDING * 2);
+function formatTitle(coverage: Coverage, options: RenderOptions): readonly string[] {
+  const lines = [`Usage ${GROUPING_PHRASE[options.grouping]}`, "", ...describeAgents(coverage)];
+  const inner = Math.max(...lines.map((line) => line.length));
+  const span = TITLE_BORDER.horizontal.repeat(inner + TITLE_PADDING * 2);
   const pad = " ".repeat(TITLE_PADDING);
 
   return [
     `${TITLE_BORDER.topLeft}${span}${TITLE_BORDER.topRight}`,
-    `${BORDER.vertical}${pad}${text}${pad}${BORDER.vertical}`,
+    ...lines.map((line) => `${BORDER.vertical}${pad}${line.padEnd(inner)}${pad}${BORDER.vertical}`),
     `${TITLE_BORDER.botLeft}${span}${TITLE_BORDER.botRight}`,
     "",
   ];
+}
+
+/**
+ * One line per agent searched, with how many of its sessions were read.
+ *
+ * Listed even when an agent produced no row, because a reader who sees no Codex
+ * anywhere in the table wants to know whether Codex was searched and found
+ * empty, or was never in scope. The counts also add up to the coverage line's
+ * total, which makes that line a check on this one rather than a repeat of it.
+ */
+function describeAgents(coverage: Coverage): readonly string[] {
+  if (coverage.agents.length === 0) return ["No agents found"];
+
+  const width = Math.max(...coverage.agents.map((agent) => agentTitle(agent.provider).length));
+
+  return coverage.agents.map(
+    (agent) =>
+      `${agentTitle(agent.provider).padEnd(width)}  ${plural(agent.sessions, "session")}`,
+  );
+}
+
+/** How an agent is written in a title, as a reader would say it aloud. */
+function agentTitle(provider: string): string {
+  return provider === "claude-code" ? "Claude Code" : "Codex";
 }
 
 /** How each grouping reads in a sentence, rather than as a flag. */
@@ -214,9 +236,11 @@ function formatBody(
       rows.push(...row(bucket, { label: bucket.label }));
     }
   } else {
-    // A separator between a period and its own agents would say they are apart,
-    // which is the opposite of what nesting means. Groups are separated from each
-    // other; inside one, the blank label column already carries the grouping.
+    // Every row is separated, the period total from its agents included. An
+    // agent's models run down several lines, and without a rule under the last
+    // of them there is nothing to say where one agent's block ends and the next
+    // begins. Grouping is carried by the blank label column and by reading, and
+    // reading is what the rule serves.
     for (const label of distinctLabels(buckets)) {
       if (rows.length > 0) rows.push(separator);
 
@@ -226,6 +250,7 @@ function formatBody(
       const group = buckets.filter((bucket) => bucket.label === label);
       rows.push(...row(mergeBuckets(group, label), { label, agent: "All", models: [] }));
       for (const bucket of group) {
+        rows.push(separator);
         rows.push(...row(bucket, { label: ABSENT, agent: `- ${bucket.provider ?? ""}` }));
       }
     }

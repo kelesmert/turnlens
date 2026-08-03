@@ -24,8 +24,22 @@ import type { Window } from "./window.js";
  * client's store, behind an undocumented schema. Reporting the count for one
  * agent only would put two meanings in one number.
  */
+/**
+ * One agent's contribution to a report's scope.
+ *
+ * Carried rather than derived from the buckets, because an agent with sessions
+ * and no priceable turns still belongs in the answer to "what did this cover".
+ * A reader who sees no Codex row wants to know whether Codex was searched.
+ */
+export interface AgentCoverage {
+  readonly provider: string;
+  readonly sessions: number;
+}
+
 export interface Coverage {
   readonly sessions: number;
+  /** Every agent searched, in registry order, whether or not it produced a row. */
+  readonly agents: readonly AgentCoverage[];
   /** Absent when no turn survived the window. */
   readonly oldestDay?: string;
   readonly newestDay?: string;
@@ -69,12 +83,14 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
   let newestDay: string | undefined;
 
   const scope = await resolveScope(options);
+  const perAgent = new Map<string, number>(options.agents.map((agent) => [agent.id, 0]));
   // Computed once over every session in scope, because a prefix that is unique
   // among these rows is the thing a reader copies into `--id`.
   const prefixLength = uniquePrefixLength(scope.map((scoped) => scoped.session));
 
   for (const { adapter, session } of scope) {
     sessions += 1;
+    perAgent.set(adapter.id, (perAgent.get(adapter.id) ?? 0) + 1);
 
     for await (const turn of replaySession({
       session,
@@ -104,6 +120,7 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
     buckets: sort([...buckets.values()], options),
     coverage: {
       sessions,
+      agents: [...perAgent].map(([provider, count]) => ({ provider, sessions: count })),
       ...(oldestDay === undefined ? {} : { oldestDay }),
       ...(newestDay === undefined ? {} : { newestDay }),
       timeZone: options.timeZone,

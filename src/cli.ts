@@ -114,17 +114,8 @@ async function report(options: CliOptions, pricing: PricingResolver): Promise<vo
       // breakdown asked for, `report session --id X daily` produces days, so the
       // table is headed Date and has no session id to show.
       grouping: options.sessionBreakdown ?? options.grouping,
-      // Empty when no agent was named, which the title reads as "All agents".
-      // Naming both would be true and would say less: the point of the phrase is
-      // that the report was not narrowed.
-      agents: options.providerId === undefined ? [] : [agentTitle(options.providerId)],
     }),
   );
-}
-
-/** How an agent is written in a title, as a reader would say it aloud. */
-function agentTitle(providerId: ProviderId): string {
-  return providerId === "claude-code" ? "Claude Code" : "Codex";
 }
 
 /**

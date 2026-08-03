@@ -26,6 +26,10 @@ function bucket(overrides: Partial<Bucket> = {}): Bucket {
 
 const COVERAGE: Coverage = {
   sessions: 2,
+  agents: [
+    { provider: "claude-code", sessions: 1 },
+    { provider: "codex", sessions: 1 },
+  ],
   oldestDay: "2026-07-04",
   newestDay: "2026-08-02",
   timeZone: "Europe/Istanbul",

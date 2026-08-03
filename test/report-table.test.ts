@@ -29,6 +29,10 @@ function bucket(overrides: Partial<Bucket> = {}): Bucket {
 
 const COVERAGE: Coverage = {
   sessions: 2,
+  agents: [
+    { provider: "claude-code", sessions: 1 },
+    { provider: "codex", sessions: 1 },
+  ],
   oldestDay: "2026-07-04",
   newestDay: "2026-08-02",
   timeZone: "Europe/Istanbul",
@@ -100,13 +104,13 @@ function unpricedFixture(): ReportData {
   };
 }
 
-const WIDE = {
-  width: 200,
-  compact: false,
-  nested: false,
-  grouping: "daily",
-  agents: ["Codex"],
-} as const;
+const WIDE = { width: 200, compact: false, nested: false, grouping: "daily" } as const;
+
+/** The title box, which sits above the table's top rule. */
+function title(lines: readonly string[]): readonly string[] {
+  const top = lines.findIndex((line) => line.startsWith("┌"));
+  return top === -1 ? [] : lines.slice(0, top);
+}
 
 describe("formatReport, column tiers", () => {
   it("shows the cache and total-token columns when there is room", () => {
@@ -200,53 +204,81 @@ describe("formatReport, column tiers", () => {
 
 describe("formatReport, the title", () => {
   /**
-   * The two facts the table never carried. Saved to a file, a report gave no way
-   * to tell a Codex one from a Claude Code one, and a weekly one from a daily one
-   * only by reading the dates.
+   * What the table itself never carried. Redirected to a file, a report gave no
+   * way to tell which agents it covered, nor a weekly one from a daily one
+   * except by reading the dates.
    */
-  it("names the agent and the grouping", () => {
-    const title = formatReport(fixture(), WIDE)[1] ?? "";
+  it("names the grouping as a phrase rather than as a flag", () => {
+    const phrase = (grouping: "daily" | "weekly" | "monthly" | "session"): string =>
+      title(formatReport(fixture(), { ...WIDE, grouping })).join("\n");
 
-    expect(title).toMatch(/Codex/u);
-    expect(title).toMatch(/by day/u);
+    expect(phrase("daily")).toMatch(/Usage by day/u);
+    expect(phrase("weekly")).toMatch(/Usage by week/u);
+    expect(phrase("monthly")).toMatch(/Usage by month/u);
+    expect(phrase("session")).toMatch(/Usage by session/u);
   });
 
-  it("reads each grouping as a phrase rather than as a flag", () => {
-    const phrase = (grouping: "weekly" | "monthly" | "session"): string =>
-      formatReport(fixture(), { ...WIDE, grouping })[1] ?? "";
+  it("names every agent searched, with how many of its sessions were read", () => {
+    const text = title(formatReport(fixture(), WIDE)).join("\n");
 
-    expect(phrase("weekly")).toMatch(/by week/u);
-    expect(phrase("monthly")).toMatch(/by month/u);
-    expect(phrase("session")).toMatch(/by session/u);
+    expect(text).toMatch(/Claude Code\s+1 session\b/u);
+    expect(text).toMatch(/Codex\s+1 session\b/u);
   });
 
   /**
-   * Naming both agents would be true and would say less. The point of the phrase
-   * is that the report was not narrowed to one.
+   * A reader who sees no Codex row wants to know whether Codex was searched and
+   * found empty, or was never in scope. Only the coverage can answer that, so the
+   * agent is listed on its count rather than on whether it produced a bucket.
    */
-  it("says every agent when none was named", () => {
-    expect(formatReport(fixture(), { ...WIDE, agents: [] })[1]).toMatch(/All agents/u);
+  it("lists an agent that contributed no rows", () => {
+    const data = {
+      ...fixture(),
+      coverage: {
+        ...COVERAGE,
+        agents: [
+          { provider: "claude-code", sessions: 2 },
+          { provider: "codex", sessions: 0 },
+        ],
+      },
+    };
+
+    expect(title(formatReport(data, WIDE)).join("\n")).toMatch(/Codex\s+0 sessions/u);
   });
 
-  it("joins two named agents", () => {
-    const title = formatReport(fixture(), { ...WIDE, agents: ["Claude Code", "Codex"] })[1] ?? "";
+  it("names one agent alone when the report was narrowed to it", () => {
+    const data = {
+      ...fixture(),
+      coverage: { ...COVERAGE, agents: [{ provider: "codex", sessions: 35 }] },
+    };
+    const text = title(formatReport(data, WIDE)).join("\n");
 
-    expect(title).toMatch(/Claude Code and Codex/u);
+    expect(text).toMatch(/Codex\s+35 sessions/u);
+    expect(text).not.toMatch(/Claude Code/u);
+  });
+
+  it("says so when no agent was found at all", () => {
+    const data = { ...fixture(), coverage: { ...COVERAGE, agents: [] } };
+
+    expect(title(formatReport(data, WIDE)).join("\n")).toMatch(/No agents found/u);
   });
 
   /** Rounded, so the box that labels the table is not read as part of it. */
   it("draws the title box with rounded corners and closes it", () => {
-    const lines = formatReport(fixture(), WIDE);
+    const box = title(formatReport(fixture(), WIDE));
 
-    expect(lines[0]?.startsWith("╭")).toBe(true);
-    expect(lines[0]?.endsWith("╮")).toBe(true);
-    expect(lines[2]?.startsWith("╰")).toBe(true);
-    expect(lines[2]?.endsWith("╯")).toBe(true);
-    expect(lines[0]).toHaveLength(lines[1]?.length ?? 0);
+    expect(box[0]?.startsWith("╭")).toBe(true);
+    expect(box[0]?.endsWith("╮")).toBe(true);
+    expect(box.at(-2)?.startsWith("╰")).toBe(true);
+    expect(box.at(-2)?.endsWith("╯")).toBe(true);
+  });
+
+  it("draws every line of the title box to one length", () => {
+    const box = title(formatReport(fixture(), WIDE)).filter((line) => line !== "");
+    expect(new Set(box.map((line) => line.length)).size).toBe(1);
   });
 
   it("puts a blank line between the title and the table", () => {
-    expect(formatReport(fixture(), WIDE)[3]).toBe("");
+    expect(title(formatReport(fixture(), WIDE)).at(-1)).toBe("");
   });
 
   /** An empty report has a coverage line and nothing to label. */
@@ -325,30 +357,20 @@ describe("formatReport, borders", () => {
   });
 
   /**
-   * A separator between a period and its own agents would say they are apart,
-   * which is the opposite of what nesting means. The blank label column already
-   * carries the grouping inside a period.
+   * Reversed after seeing it drawn. Without a rule under an agent's last model
+   * line there is nothing to say where one agent's block ends, and an agent's
+   * models run down several lines. The earlier reasoning, that a rule between a
+   * period and its children says they are apart, lost to the fact that a reader
+   * could not tell whose models were whose.
    */
-  it("does not separate a period from the agents nested under it", () => {
+  it("separates a period total from its agents, and each agent from the next", () => {
     const lines = formatReport(nestedFixture(), { ...WIDE, nested: true });
     const rules = lines.filter((line) => line.startsWith("├"));
 
-    // Two periods: heading, between them, above TOTAL. Not one per agent row.
-    expect(rules).toHaveLength(3);
-  });
-
-  /**
-   * A period total's models are exactly the union of the agents beneath it, so
-   * printing them repeats the answer and makes the tallest row in the table out
-   * of a repeat.
-   */
-  it("leaves the models cell empty on a period total", () => {
-    const lines = formatReport(nestedFixture(), { ...WIDE, nested: true });
-    const [parent, ...children] = body(lines);
-
-    expect(cells(parent ?? "")[1]).toBe("All");
-    expect(cells(parent ?? "")[2]).toBe("");
-    expect(cells(children[0] ?? "")[2]).toMatch(/opus-5/u);
+    // The fixture is two periods, the first with two agents and the second with
+    // one. Heading, two inside the first period, one between the periods, one
+    // inside the second, one above TOTAL.
+    expect(rules).toHaveLength(6);
   });
 
   it("draws the box when there is no terminal, as a redirect has none", () => {
@@ -473,15 +495,14 @@ describe("formatReport, rows", () => {
 
 describe("formatReport, nested agents", () => {
   it("prints a merged total per period with the agents beneath it", () => {
-    const lines = formatReport(nestedFixture(), { ...WIDE, nested: true });
-    const body = lines.slice(2, -1);
-    const first = body.findIndex((line) => line.includes("2026-08-02"));
+    const rows = body(formatReport(nestedFixture(), { ...WIDE, nested: true }));
+    const first = rows.findIndex((line) => line.includes("2026-08-02"));
 
-    expect(body[first]).toMatch(/All/u);
+    expect(rows[first]).toMatch(/All/u);
     // 2.14 + 0.31 for that day
-    expect(body[first]).toMatch(/2\.45/u);
-    expect(body[first + 1]).toMatch(/- claude-code/u);
-    expect(body[first + 2]).toMatch(/- codex/u);
+    expect(rows[first]).toMatch(/2\.45/u);
+    expect(rows[first + 1]).toMatch(/- claude-code/u);
+    expect(rows[first + 2]).toMatch(/- codex/u);
   });
 
   it("blanks the repeated period label on the agent rows", () => {
