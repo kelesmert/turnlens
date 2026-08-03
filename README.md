@@ -89,6 +89,7 @@ the same agent and reach the same place.
 ```bash
 turnlens claude
 turnlens claude --id a3f2c891     # skip the list, by id or unique prefix
+turnlens --id a3f2c891            # same, the id says which agent
 ```
 
 TurnLens lists the sessions it can find, most recently active first, and asks
@@ -98,6 +99,8 @@ each time a turn closes. Stop with Ctrl+C; a summary is printed on exit.
 
 ```
   --id <session>       Skip the list. A full session id or a unique prefix.
+                       Works without an agent: the id says which one. If more
+                       than one session matches, you are asked which.
   --prompt-preview     Record a 20-character preview of each prompt.
                        This writes part of your prompt to disk.
   --no-prompt-preview  Never record prompt previews.
@@ -213,7 +216,8 @@ price list.
 Worth knowing before you trust a number:
 
 - **One session at a time.** A lock under `~/.turnlens/locks/` stops two
-  watchers recording the same session twice.
+  watchers recording the same session twice. A lock left behind by a process that
+  is no longer running is reclaimed automatically, and TurnLens says so.
 - **Subagent turns are not recorded.** Claude Code writes them to a separate
   transcript that TurnLens does not read, so their cost appears nowhere.
 - **Claude Code turns report no reasoning tokens.** Anthropic exposes no counter
