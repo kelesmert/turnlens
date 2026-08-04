@@ -50,6 +50,7 @@ export interface CliOptions {
   readonly refreshPricing: boolean;
   readonly help: boolean;
   readonly helpLevel: HelpLevel;
+  readonly version: boolean;
 }
 
 /** Whether there is a terminal to ask a question in. */
@@ -88,31 +89,26 @@ export function parseCliOptions(argv: readonly string[], env: CliEnvironment): C
       offline: { type: "boolean", default: false },
       "refresh-pricing": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
+      // `-v` is the one short flag. Every other option is spelled out, but a
+      // version check is the thing people type without looking anything up.
+      version: { type: "boolean", short: "v", default: false },
     },
     allowPositionals: true,
   });
 
   const grammar = readPositionals(positionals, values.id !== undefined);
 
+  // Before the grammar is judged at all. Someone asking which version they are
+  // running is not asking about the rest of the command line, and answering
+  // that question must not depend on getting the rest of it right.
+  if (values.version === true) return stopEarly(grammar, { version: true });
+
   // Returned before the other checks, so `--help` still explains the flags when
   // one of them is what the user got wrong. The remaining fields are the
   // defaults and are never read: the caller prints the help text and stops.
   // The level is not a default, though: it decides which text is printed, and
   // the positionals that name it are read above.
-  if (values.help === true) {
-    return {
-      mode: grammar.mode,
-      grouping: grammar.grouping,
-      json: false,
-      compact: false,
-      noColour: false,
-      previewChoice: "disabled",
-      offline: false,
-      refreshPricing: false,
-      help: true,
-      helpLevel: grammar.helpLevel,
-    };
-  }
+  if (values.help === true) return stopEarly(grammar, { help: true });
 
   // Owns the both-preview-flags rejection, so that check is not repeated here.
   const previewChoice = decidePromptPreview({
@@ -158,6 +154,33 @@ export function parseCliOptions(argv: readonly string[], env: CliEnvironment): C
     refreshPricing,
     help: false,
     helpLevel: grammar.helpLevel,
+    version: false,
+  };
+}
+
+/**
+ * The shape returned by a flag that answers on its own and stops.
+ *
+ * `--help` and `--version` both print one thing and exit, so every other field
+ * is a default that is never read. The level is the exception: it decides which
+ * help text is printed, and the positionals naming it were read already.
+ */
+function stopEarly(
+  grammar: Grammar,
+  answer: { readonly help?: true; readonly version?: true },
+): CliOptions {
+  return {
+    mode: grammar.mode,
+    grouping: grammar.grouping,
+    json: false,
+    compact: false,
+    noColour: false,
+    previewChoice: "disabled",
+    offline: false,
+    refreshPricing: false,
+    help: answer.help === true,
+    helpLevel: grammar.helpLevel,
+    version: answer.version === true,
   };
 }
 

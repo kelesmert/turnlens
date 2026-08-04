@@ -164,6 +164,7 @@ piped input is not asked but stops instead.
   --offline            Price from local data only. Never access the network.
   --refresh-pricing    Download the pricing list now, even if it looks current.
   --help               Show this message
+  --version, -v        Print the version and exit
 ```
 
 ### Reporting
@@ -242,6 +243,7 @@ list. Model names are shortened for reading; `--json` keeps the full identifier.
   --offline            Price from local data only. Never access the network.
   --refresh-pricing    Download the pricing list now, even if it looks current.
   --help               Show this message
+  --version, -v        Print the version and exit
 ```
 
 Days are your local days, and every report says which timezone it used. The box

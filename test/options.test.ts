@@ -155,6 +155,7 @@ describe("parseCliOptions", () => {
       refreshPricing: false,
       help: false,
       helpLevel: "root",
+      version: false,
     });
   });
 
@@ -308,5 +309,23 @@ describe("parseCliOptions, --no-color", () => {
   /** Watching prints a table too, so the flag belongs to both modes. */
   it("is read in watch mode", () => {
     expect(parseCliOptions(["codex", "--no-color"], TTY).noColour).toBe(true);
+  });
+});
+
+describe("--version", () => {
+  it("is recognised, long and short", () => {
+    expect(parseCliOptions(["--version"], TTY).version).toBe(true);
+    expect(parseCliOptions(["-v"], TTY).version).toBe(true);
+  });
+
+  it("is false when not asked for", () => {
+    expect(parseCliOptions(["codex"], TTY).version).toBe(false);
+    expect(parseCliOptions(["--help"], TTY).version).toBe(false);
+  });
+
+  it("wins over everything else, so a bad flag still reports the version", () => {
+    // Same reasoning as --help returning early: someone checking which version
+    // they are running should not have to get the rest of the line right.
+    expect(parseCliOptions(["--version", "codex", "report", "weekly"], TTY).version).toBe(true);
   });
 });

@@ -43,6 +43,13 @@ async function main(): Promise<void> {
     interactive: process.stdin.isTTY === true,
   });
 
+  // Before help, because `--version --help` is a version question with a stray
+  // word after it, and answering with three screens of text is not an answer.
+  if (options.version) {
+    process.stdout.write(`${currentVersion ?? "unknown"}\n`);
+    return;
+  }
+
   if (options.help) {
     process.stdout.write(formatHelp(options.helpLevel));
     return;
