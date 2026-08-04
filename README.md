@@ -128,6 +128,7 @@ the same agent and reach the same place. Each mode documents its own flags:
 turnlens --help
 turnlens claude --help          # what watching takes
 turnlens claude report --help   # what a report takes
+turnlens --version              # or -v
 ```
 
 ### Watching
@@ -411,8 +412,8 @@ Worth knowing before you trust a number:
 Bug reports, feature ideas and support for another agent all belong in
 [issues](https://github.com/kelesmert/turnlens/issues). A number that looks wrong
 is the most useful report of all: say which agent, paste the row and what you
-expected, and if you can, run the same window through another usage tool so there
-is something to compare against.
+expected, include `turnlens --version`, and if you can, run the same window
+through another usage tool so there is something to compare against.
 
 Released versions and what changed in each are under
 [releases](https://github.com/kelesmert/turnlens/releases).
