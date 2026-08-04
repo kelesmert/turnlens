@@ -3,11 +3,11 @@ import { isDue, readUpdateState, resolveUpdateStatePath, writeUpdateState } from
 import { isNewer } from "./version.js";
 
 export interface UpdateCheckOptions {
-  /** The version this build reports, from `package.json` at compile time. */
+  /** The version this build reports. See `resolveSelfVersion` for where from. */
   readonly currentVersion: string;
   readonly offline: boolean;
   readonly env: NodeJS.ProcessEnv;
-  /** Whether the output stream is a terminal. A pipe is never written to. */
+  /** Whether the stream the notice would be printed to is a terminal. */
   readonly isTty: boolean;
   readonly now?: Date;
   /** Injected so a test never reaches the registry. */

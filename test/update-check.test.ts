@@ -65,7 +65,7 @@ describe("checkForUpdate", () => {
       expect(options.fetchLatest).not.toHaveBeenCalled();
     });
 
-    it("when output is not a terminal, so a pipe carries only what was asked for", async () => {
+    it("when the notice would reach no terminal, so nobody could act on it", async () => {
       const options = ready({ isTty: false });
       expect(await checkForUpdate(options)).toBeUndefined();
       expect(options.fetchLatest).not.toHaveBeenCalled();

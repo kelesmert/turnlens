@@ -61,9 +61,11 @@ async function main(): Promise<void> {
   const [pricing, latest] = await Promise.all([preparePricing(options), lookForUpdate(options)]);
 
   // Printed before either mode starts, so it is not lost above a long report or
-  // buried under a table that is still filling.
+  // buried under a table that is still filling. On stderr, like every other
+  // diagnostic here: `--json` promises stdout carries the report and nothing
+  // else, and a notice the user did not ask for is not the report.
   if (latest !== undefined) {
-    write([...formatUpdateNotice(latest, currentVersion ?? ""), ""]);
+    warn([...formatUpdateNotice(latest, currentVersion ?? ""), ""]);
   }
 
   if (options.mode === "report") await report(options, pricing);
@@ -82,11 +84,15 @@ const currentVersion = resolveSelfVersion();
  */
 async function lookForUpdate(options: CliOptions): Promise<string | undefined> {
   if (currentVersion === undefined) return undefined;
+  // Measured on the stream the notice is written to, not on stdout. The check
+  // asks whether a human will read it, and answering that about a stream this
+  // never writes to is how `turnlens report --json | jq` ended up choosing
+  // between a clean pipe and a notice when it can have both.
   return await checkForUpdate({
     currentVersion,
     offline: options.offline,
     env: process.env,
-    isTty: process.stdout.isTTY === true,
+    isTty: process.stderr.isTTY === true,
   });
 }
 
@@ -102,7 +108,7 @@ async function preparePricing(options: CliOptions): Promise<PricingResolver> {
 
   if (options.refreshPricing) {
     const refreshed = await refreshPricing({ offline: false, cachePath });
-    write([
+    warn([
       refreshed === undefined
         ? "Pricing refresh failed. Continuing with the pricing data already available."
         : `Pricing refreshed: ${refreshed.modelCount} models, ${refreshed.version}`,
@@ -112,7 +118,7 @@ async function preparePricing(options: CliOptions): Promise<PricingResolver> {
   return await createPricingResolver({
     offline: options.offline,
     cachePath,
-    notify: (line) => write([line]),
+    notify: (line) => warn([line]),
   });
 }
 
@@ -350,6 +356,22 @@ async function ask(question: string): Promise<string> {
 
 function write(lines: readonly string[]): void {
   process.stdout.write(`${lines.join("\n")}\n`);
+}
+
+/**
+ * Everything printed before a mode starts that is not what the mode was asked
+ * for: a pricing fallback, a refresh result, an update notice.
+ *
+ * The split exists because `--json` promises stdout carries the report and
+ * nothing else, and each of these once broke that promise. stdout is the
+ * product; stderr is what happened on the way to it, and it still reaches the
+ * terminal when nobody redirects it.
+ *
+ * The lock message in `watch` is deliberately not here. It belongs to the
+ * watching conversation, and watching has no machine-readable output to spoil.
+ */
+function warn(lines: readonly string[]): void {
+  process.stderr.write(`${lines.join("\n")}\n`);
 }
 
 try {
