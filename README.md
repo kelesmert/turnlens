@@ -44,6 +44,28 @@ locally, has no runtime dependencies and never modifies agent session files.
   />
 </p>
 
+## When this is the right tool
+
+A session total tells you the session was expensive. It does not tell you which
+prompt made it expensive, and that is usually the thing you can act on.
+
+- **Costing a skill, a command or a prompt you are writing.** Run it, read the
+  one row it produced. Change the wording, run it again, compare. A session total
+  cannot separate the two attempts; a per-turn row is the measurement.
+- **Finding what actually spent the money.** Turns are not evenly priced. One
+  prompt that pulled a large file into context can outweigh a whole morning of
+  small ones, and it is invisible in any figure that averages.
+- **Seeing what an interruption cost.** Work you stopped is recorded on its own
+  row rather than folded into your next question, so pressing Ctrl+C after an
+  agent has read half the repository shows up as its own number.
+- **Deciding whether a setting is worth it.** A different model, or a different
+  reasoning effort, is a before-and-after you can read directly.
+- **Checking a month.** `turnlens report` answers what has already been spent,
+  by day, week, month or session, without having watched any of it.
+
+If all you need is a monthly total, a broader tool will serve you better, and
+[ccusage](https://github.com/ryoppippi/ccusage) covers more agents.
+
 ## Install
 
 ```bash
