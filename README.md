@@ -104,6 +104,7 @@ each time a turn closes. Stop with Ctrl+C; a summary is printed on exit.
   --prompt-preview     Record a 20-character preview of each prompt.
                        This writes part of your prompt to disk.
   --no-prompt-preview  Never record prompt previews.
+  --no-color           Print without colour.
   --offline            Price from local data only. Never access the network.
   --refresh-pricing    Download the pricing list now, even if it looks current.
   --help               Show this message
@@ -155,6 +156,7 @@ list. Model names are shortened for reading; `--json` keeps the full identifier.
   --until <date>       Latest day to include, YYYY-MM-DD. Inclusive.
   --json               Machine-readable output on stdout.
   --compact            Fewer columns, whatever the terminal's width.
+  --no-color           Print without colour.
   --offline            Price from local data only. Never access the network.
   --refresh-pricing    Download the pricing list now, even if it looks current.
   --help               Show this message
@@ -178,6 +180,13 @@ If you want figures that stay put when upstream prices change, keep the CSVs.
 
 Archived sessions are always counted. Their tokens were spent, and there is no
 option to leave them out of a total.
+
+**Colour repeats what the text already says.** Headings are cyan, rules are
+dim, a total is bold, and yellow marks the two things worth not missing: a turn
+that could not be priced, and a turn you interrupted. Strip the colour and no
+information is lost, which is why turning it off is not a degraded mode. It is
+off for `--no-color`, off if `NO_COLOR` is set to anything at all, off whenever
+output is not a terminal, and never present in `--json`.
 
 ## What counts as a turn
 
