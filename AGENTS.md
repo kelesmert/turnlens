@@ -46,6 +46,13 @@ copy is right until the next flag is added.
   being built.** Pricing resolves once, before either loop, and `lookup` is
   synchronous. Adding an `await` to that path breaks a guarantee no test covers,
   and a report replays every transcript on the machine through it.
+- **The update check shares that one moment and adds no other.** It is issued
+  with `Promise.all` beside the pricing request in `cli.ts`, so it costs the
+  slower of the two rather than the sum. It must never become a background task:
+  `update-notifier` spawns an unref'ed child that outlives the process, which is
+  precisely the fetch-while-watching this codebase forbids. Every failure on that
+  path is silence, and a version from the registry is checked against
+  `^\d+\.\d+\.\d+$` before it reaches a terminal.
 - **A token count of zero is printed; a cost that could not be computed is
   blank.** The two look alike and mean opposite things. A count is never unknown,
   so blanking a zero would make a known figure look unknowable; a cost of `0`

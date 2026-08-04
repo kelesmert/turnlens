@@ -80,6 +80,19 @@ npm install -g turnlens
 
 Node 22 or newer.
 
+`npx turnlens@latest` always runs the newest release. A global install does not:
+npm pins whatever version was current when you ran it. So once a day, before it
+starts, TurnLens asks the registry whether something newer exists and prints two
+lines if so:
+
+```bash
+npm install -g turnlens@latest
+```
+
+It asks nothing else and installs nothing. The check is skipped under
+`--offline`, under `NO_UPDATE_NOTIFIER`, in CI, and whenever output is not a
+terminal.
+
 <details>
 <summary>From source</summary>
 
@@ -315,9 +328,10 @@ on some machine.
 
 | Variable | Purpose |
 |---|---|
-| `TURNLENS_HOME` | Where the pricing cache and session locks live. Default `~/.turnlens/`. |
+| `TURNLENS_HOME` | Where the pricing cache, session locks and update check live. Default `~/.turnlens/`. |
 | `TZ` | Which timezone a report's days are cut on. Default is the machine's. Every report prints the zone it used. |
 | `NO_COLOR` | Turns colour off. See above. |
+| `NO_UPDATE_NOTIFIER` | Set to anything to stop TurnLens checking for a newer release. `CI` does the same. |
 | `COLUMNS` | Table width in characters, overriding what the terminal reports. The only way to correct a measurement that is wrong, as it can be under tmux or over SSH. Ignored when output is not a terminal, where there is no window to fit. |
 | `CODEX_HOME` | Where Codex keeps its sessions. |
 | `CLAUDE_CONFIG_DIR` | Where Claude Code keeps its sessions. |
