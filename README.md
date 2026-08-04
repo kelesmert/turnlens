@@ -69,38 +69,47 @@ turnlens claude            # watch: pick a session and follow it
 turnlens claude report     # count: what has been spent already
 ```
 
+Everything is one of these, in this order:
+
+```
+turnlens [claude | codex] [report [daily | weekly | monthly | session]] [options]
+```
+
 For a one-off run without installing globally, put `npx turnlens@latest` where
 `turnlens` appears above.
 
-Naming no agent means different things in the two modes, deliberately. Watching
-asks which agent, because two sessions cannot be followed at once. A report does
-not ask: it covers every agent.
+Agents are `claude` and `codex`. `claude-code` is accepted for `claude`; they are
+the same agent and reach the same place. Each mode documents its own flags:
 
 ```bash
-turnlens                   # ask which agent, then list its sessions
-turnlens report            # every agent, grouped by day
+turnlens --help
+turnlens claude --help          # what watching takes
+turnlens claude report --help   # what a report takes
 ```
-
-Agents are `claude` and `codex`. `claude-code` is accepted for `claude`; they are
-the same agent and reach the same place.
 
 ### Watching
-
-```bash
-turnlens claude
-turnlens claude --id a3f2c891     # skip the list, by id or unique prefix
-turnlens --id a3f2c891            # same, the id says which agent
-```
 
 TurnLens lists the sessions it can find, most recently active first, and asks
 which one to watch. On selection it prices the turns the session already closed
 and shows them as one summary line, then follows the transcript and prints a row
 each time a turn closes. Stop with Ctrl+C; a summary is printed on exit.
 
+```bash
+turnlens                            # ask which agent, then which session
+turnlens codex                      # Codex, pick from its list
+turnlens claude --id a3f2c891       # skip the list
+turnlens --id a3f2c891              # the id alone says which agent
+turnlens codex --prompt-preview     # also record 20 characters of each prompt
+```
+
+Watching asks which agent when none is named, because two sessions cannot be
+followed at once. A prefix is enough for `--id` as long as it is unique; if more
+than one session answers to it you are shown the matches and asked which, and
+piped input is not asked but stops instead.
+
 ```
   --id <session>       Skip the list. A full session id or a unique prefix.
-                       Works without an agent: the id says which one. If more
-                       than one session matches, you are asked which.
+                       Works without an agent: the id says which one.
   --prompt-preview     Record a 20-character preview of each prompt.
                        This writes part of your prompt to disk.
   --no-prompt-preview  Never record prompt previews.
@@ -112,17 +121,38 @@ each time a turn closes. Stop with Ctrl+C; a summary is printed on exit.
 
 ### Reporting
 
+A report reads the agents' own transcripts, so it works whether or not you have
+ever run the watcher. Nothing is written and no session is followed. Naming no
+agent covers every agent rather than asking for one.
+
+One word after `report` says how the rows are grouped. There are four, and
+`daily` is what you get by leaving it out:
+
+| | |
+|---|---|
+| `daily` | one row per day, the default |
+| `weekly` | one row per week, beginning Monday |
+| `monthly` | one row per month |
+| `session` | one row per session |
+
 ```bash
-turnlens claude report                            # by day
-turnlens claude report weekly                     # weeks begin Monday
+turnlens report                                  # every agent, by day
+turnlens codex report                            # Codex only, by day
+turnlens claude report weekly                    # weeks begin Monday
 turnlens claude report monthly
-turnlens claude report session                    # one row per session
-turnlens claude report session --id a3f2 daily    # that session, day by day
-turnlens report                                   # every agent in one table
+turnlens report session                          # one row per session
+turnlens codex report session --id a3f2          # that session's total
+turnlens codex report session --id a3f2 daily    # that session, day by day
 ```
 
-A report reads the agents' own transcripts, so it works whether or not you have
-ever run the watcher. Nothing is written and no session is followed.
+Both date bounds are inclusive, both take `YYYY-MM-DD`, and either can stand
+alone:
+
+```bash
+turnlens report --since 2026-07-01
+turnlens report --until 2026-07-31
+turnlens claude report weekly --since 2026-07-01 --until 2026-07-31
+```
 
 ```text
 ╭───────────────────────────────────────────────────────────────╮
@@ -166,6 +196,49 @@ Days are your local days, and every report says which timezone it used. The box
 above the table says what the figures cover: how much was read, over what window,
 priced against which list, and how many turns could not be priced at all.
 
+Handing a report to something else:
+
+```bash
+turnlens report --json > usage.json
+turnlens report --json | jq '[.buckets[].costUsd] | add'
+turnlens report --compact           # fewer columns whatever the width
+```
+
+`--json` prints one object with two keys. `buckets` is the rows, each carrying
+its label, turn count, every token category separately, its models as full
+identifiers, and its cost. `coverage` is what the box says: sessions read, days,
+per-agent counts, the window, the timezone, the unpriced count and the pricing
+version. There is no grand total, and a bucket with no cost omits `costUsd`
+rather than reporting zero, which is why summing is left to the consumer.
+
+### Colour
+
+Colour repeats what the text already says. Headings are cyan, rules are dim, a
+total is bold, and yellow marks the two things worth not missing: a turn that
+could not be priced, and a turn you interrupted. Strip the colour and no
+information is lost, which is why turning it off is not a degraded mode.
+
+```bash
+turnlens report --no-color
+NO_COLOR= turnlens report     # any value, including empty, turns it off
+```
+
+It is also off whenever output is not a terminal, and never present in `--json`.
+
+## How the numbers work
+
+Worth reading once, because these decide what a figure means.
+
+**A turn is one prompt and everything the agent did to answer it.** It closes
+when the agent finishes, when you interrupt it, or when the conversation is
+compacted, and each closed turn is recorded with the status that closed it:
+`completed`, `aborted` or `compacted`.
+
+**Interrupted work is recorded separately**, not folded into whatever comes next.
+This matters more than it sounds: an interrupted turn can be the most expensive
+one in a session, and a tool that quietly bills it to your next question is
+answering the wrong question.
+
 **A turn counts on the day you sent the prompt**, not the day the agent finished
 answering. It only differs for a turn that runs across midnight, and the reason
 is that the alternative makes the day depend on how long the agent thought: the
@@ -178,96 +251,9 @@ today's rates, because a transcript records tokens and not the rate that applied
 when the turn closed. A row the watcher wrote keeps the rate of its own moment.
 If you want figures that stay put when upstream prices change, keep the CSVs.
 
-Archived sessions are always counted. Their tokens were spent, and there is no
-option to leave them out of a total.
-
-**Colour repeats what the text already says.** Headings are cyan, rules are
-dim, a total is bold, and yellow marks the two things worth not missing: a turn
-that could not be priced, and a turn you interrupted. Strip the colour and no
-information is lost, which is why turning it off is not a degraded mode. It is
-off for `--no-color`, off if `NO_COLOR` is set to anything at all, off whenever
-output is not a terminal, and never present in `--json`.
-
-### Examples
-
-Watching one session:
-
-```bash
-turnlens                            # ask which agent, then which session
-turnlens codex                      # Codex, pick from the list
-turnlens claude --id a3f2c891       # skip the list
-turnlens --id a3f2c891              # the id alone says which agent
-turnlens codex --prompt-preview     # also record 20 characters of each prompt
-turnlens claude --offline           # never touch the network
-```
-
-A prefix is enough for `--id`, as long as it is unique. If more than one session
-answers to it you are shown the matches and asked which; piped input is not
-asked and the command stops instead.
-
-Counting what has been spent:
-
-```bash
-turnlens report                     # every agent, by day
-turnlens codex report               # Codex only, by day
-turnlens claude report weekly       # weeks begin Monday
-turnlens claude report monthly
-turnlens report session             # one row per session, every agent
-```
-
-One session, two ways:
-
-```bash
-turnlens codex report session --id a3f2          # its total, one row
-turnlens codex report session --id a3f2 daily    # the same session, day by day
-```
-
-Narrowing to a window. Both bounds are inclusive, both take `YYYY-MM-DD`, and
-either can stand alone:
-
-```bash
-turnlens report --since 2026-07-01
-turnlens report --until 2026-07-31
-turnlens claude report weekly --since 2026-07-01 --until 2026-07-31
-```
-
-Handing a report to something else:
-
-```bash
-turnlens report --json > usage.json
-turnlens report --json | jq '[.buckets[].costUsd] | add'
-turnlens report --compact           # fewer columns whatever the width
-turnlens report --no-color
-NO_COLOR= turnlens report           # any value, including empty, turns it off
-```
-
-`--json` prints one object with two keys. `buckets` is the rows, each carrying
-its label, turn count, every token category separately, its models as full
-identifiers, and its cost. `coverage` is what the box above the table says:
-sessions read, days, per-agent counts, the window, the timezone, the unpriced
-count and the pricing version. There is no grand total; a bucket with no cost
-omits `costUsd` rather than reporting zero, which is why summing is left to the
-consumer.
-
-Finding your way around. Each mode documents only its own flags:
-
-```bash
-turnlens --help
-turnlens claude --help              # what watching takes
-turnlens claude report --help       # what a report takes
-```
-
-## What counts as a turn
-
-One prompt and everything the agent did to answer it. A turn closes when the
-agent finishes, when you interrupt it, or when the conversation is compacted, and
-each closed turn is recorded with the status that closed it: `completed`,
-`aborted` or `compacted`.
-
-Interrupted work is recorded **separately**, not folded into whatever comes next.
-This matters more than it sounds: an interrupted turn can be the most expensive
-one in a session, and a tool that quietly bills it to your next question is
-answering the wrong question.
+**Archived sessions are always counted** by a report. Their tokens were spent,
+and there is no option to leave them out of a total. Watching excludes them,
+because an archived session has ended and cannot be followed.
 
 ## Where output goes
 
@@ -290,7 +276,27 @@ records a cost of zero for a model it could not price, because a zero joins a
 spreadsheet sum and cannot be told apart from a genuinely free turn.
 
 TurnLens's own state, the pricing cache and session locks, lives under
-`~/.turnlens/`, overridable with `TURNLENS_HOME`.
+`~/.turnlens/`.
+
+## Environment
+
+Nothing here has to be set. Each variable exists because a default can be wrong
+on some machine.
+
+| | |
+|---|---|
+| `TURNLENS_HOME` | Where the pricing cache and session locks live. Default `~/.turnlens/`. |
+| `TZ` | Which timezone a report's days are cut on. Default is the machine's. Every report prints the zone it used. |
+| `NO_COLOR` | Set to anything, including empty, to turn colour off. |
+| `COLUMNS` | Table width, in characters. Overrides what the terminal reports, which is the only way to correct a bad measurement. |
+| `CODEX_HOME` | Where Codex keeps its sessions. |
+| `CLAUDE_CONFIG_DIR` | Where Claude Code keeps its sessions. |
+| `XDG_CONFIG_HOME` | Consulted for Claude Code when `CLAUDE_CONFIG_DIR` is unset. |
+
+The last three are the agents' own variables, not TurnLens's. If a listing comes
+back empty, TurnLens prints every directory it searched and the value of each of
+these, because "the agent never ran here" and "it writes somewhere else" look
+identical otherwise.
 
 ## Pricing
 
