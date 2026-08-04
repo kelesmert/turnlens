@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { COLOUR } from "../src/ui/colour.js";
 import {
   FULL_TABLE_WIDTH,
   MINIMUM_SESSION_LISTING_WIDTH,
@@ -467,5 +468,63 @@ describe("formatSessionListing", () => {
 
     expect(lines.at(-1)).toContain("Hesapla 7x7");
     expect(lines.at(-1)).toContain("2026-07-28 00:22:51");
+  });
+});
+
+describe("the live table in colour", () => {
+  const strip = (text: string): string => text.replaceAll(/\u001b\[[0-9;]*m/gu, "");
+
+  /**
+   * Colour repeats what the row already says. Strip it and the row is the row,
+   * which is what makes turning it off safe rather than a degraded mode.
+   */
+  it("renders the same text coloured as plain", () => {
+    const layout = selectLayout(200);
+    const aborted = turn({ status: "aborted" });
+
+    expect(formatTurnRow(layout, aborted, COLOUR).map(strip)).toEqual([
+      ...formatTurnRow(layout, aborted),
+    ]);
+  });
+
+  /**
+   * An interrupted turn can be the most expensive one in a session, which is
+   * exactly why it should not be missed. Attention rather than error: nothing
+   * failed, the user pressed Ctrl+C.
+   */
+  it("marks an aborted turn for attention", () => {
+    const layout = selectLayout(200);
+    const [row] = formatTurnRow(layout, turn({ status: "aborted" }), COLOUR);
+
+    expect(row).toMatch(/\u001b/u);
+  });
+
+  /**
+   * Nine rows in ten. Colouring the ordinary case is how the exceptional one
+   * stops standing out.
+   */
+  it("leaves a completed turn uncoloured", () => {
+    const layout = selectLayout(200);
+    const [row] = formatTurnRow(layout, turn({ status: "completed" }), COLOUR);
+
+    expect(row).not.toMatch(/\u001b/u);
+  });
+
+  it("paints nothing at all when no paint is given", () => {
+    const layout = selectLayout(200);
+
+    for (const row of formatTurnRow(layout, turn({ status: "aborted" }))) {
+      expect(row).not.toMatch(/\u001b/u);
+    }
+    for (const line of formatTableHeader(layout)) {
+      expect(line).not.toMatch(/\u001b/u);
+    }
+  });
+
+  it("keeps the header and its rule the same width once stripped", () => {
+    const layout = selectLayout(200);
+    const [header, underline] = formatTableHeader(layout, undefined, COLOUR).map(strip);
+
+    expect(header?.length).toBe(underline?.length);
   });
 });

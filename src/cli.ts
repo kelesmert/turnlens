@@ -20,6 +20,7 @@ import { formatReport } from "./report/table.js";
 import { formatSessionBanner } from "./ui/banner.js";
 import { formatHelp } from "./ui/help.js";
 import { formatAgentListing, formatSessionListing } from "./ui/live-table.js";
+import { selectPaint } from "./ui/colour.js";
 import { terminalWidth } from "./ui/terminal.js";
 import { confirmYesNo } from "./ui/prompts.js";
 import { summariseCsv } from "./ui/summary.js";
@@ -114,6 +115,9 @@ async function report(options: CliOptions, pricing: PricingResolver): Promise<vo
       // breakdown asked for, `report session --id X daily` produces days, so the
       // table is headed Date and has no session id to show.
       grouping: options.sessionBreakdown ?? options.grouping,
+      // Decided once, here, so the renderer never asks whether colour is on and
+      // a width assertion measures what a reader sees.
+      paint: selectPaint(process.stdout, process.env, options.noColour),
     }),
   );
 }
@@ -190,6 +194,7 @@ async function watch(options: CliOptions, pricing: PricingResolver): Promise<voi
       includePromptPreview,
       pricing,
       signal: controller.signal,
+      paint: selectPaint(process.stdout, process.env, options.noColour),
     });
   } finally {
     write(await summariseCsv(csvPath, terminalWidth(process.stdout)));

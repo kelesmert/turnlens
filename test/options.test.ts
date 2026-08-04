@@ -149,6 +149,7 @@ describe("parseCliOptions", () => {
       grouping: "daily",
       json: false,
       compact: false,
+      noColour: false,
       previewChoice: "ask",
       offline: false,
       refreshPricing: false,
@@ -292,5 +293,20 @@ describe("describeMissingSessions", () => {
 
   it("says so plainly when a provider searched nowhere at all", () => {
     expect(describeMissingSessions("codex", [], {})).toContain("No directories were searched");
+  });
+});
+
+describe("parseCliOptions, --no-color", () => {
+  it("is off unless asked for", () => {
+    expect(parseCliOptions(["codex", "report"], TTY).noColour).toBe(false);
+  });
+
+  it("is read in report mode", () => {
+    expect(parseCliOptions(["codex", "report", "--no-color"], TTY).noColour).toBe(true);
+  });
+
+  /** Watching prints a table too, so the flag belongs to both modes. */
+  it("is read in watch mode", () => {
+    expect(parseCliOptions(["codex", "--no-color"], TTY).noColour).toBe(true);
   });
 });

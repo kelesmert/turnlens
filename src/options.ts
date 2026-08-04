@@ -43,6 +43,8 @@ export interface CliOptions {
   readonly until?: string;
   readonly json: boolean;
   readonly compact: boolean;
+  /** True when the user asked for no colour. `NO_COLOR` and a pipe also disable it. */
+  readonly noColour: boolean;
   readonly previewChoice: PromptPreviewChoice;
   readonly offline: boolean;
   readonly refreshPricing: boolean;
@@ -78,6 +80,7 @@ export function parseCliOptions(argv: readonly string[], env: CliEnvironment): C
       until: { type: "string" },
       json: { type: "boolean", default: false },
       compact: { type: "boolean", default: false },
+      "no-color": { type: "boolean", default: false },
       // No defaults: an absent flag must stay distinguishable from an explicit
       // one, because absent means "ask" while explicit means "do not ask".
       "prompt-preview": { type: "boolean" },
@@ -102,6 +105,7 @@ export function parseCliOptions(argv: readonly string[], env: CliEnvironment): C
       grouping: grammar.grouping,
       json: false,
       compact: false,
+      noColour: false,
       previewChoice: "disabled",
       offline: false,
       refreshPricing: false,
@@ -148,6 +152,7 @@ export function parseCliOptions(argv: readonly string[], env: CliEnvironment): C
     ...(values.until === undefined ? {} : { until: parseBound(values.until, "--until") }),
     json: values.json === true,
     compact: values.compact === true,
+    noColour: values["no-color"] === true,
     previewChoice,
     offline,
     refreshPricing,

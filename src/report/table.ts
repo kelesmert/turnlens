@@ -1,4 +1,5 @@
 import { truncate, wrapWords } from "../core/text.js";
+import { PLAIN } from "../ui/colour.js";
 import { mergeBuckets } from "./aggregate.js";
 import { shortenModelNames } from "./models.js";
 import { fit } from "../ui/live-table.js";
@@ -6,6 +7,7 @@ import type { FittedColumn } from "../ui/live-table.js";
 import type { Grouping } from "../options.js";
 import type { Bucket } from "./aggregate.js";
 import type { Coverage, ReportData } from "./collect.js";
+import type { Paint } from "../ui/colour.js";
 
 /**
  * Below this width the report drops its cache and total-token columns.
@@ -69,6 +71,15 @@ export interface RenderOptions {
   /** True when more than one agent is in scope, which turns on nesting. */
   readonly nested: boolean;
   readonly grouping: Grouping;
+  /**
+   * How each role is painted. Absent means plain, which is what every test uses.
+   *
+   * Injected rather than decided here so the renderer never asks whether colour
+   * is on, and so a width assertion measures the string a reader sees. Applied
+   * to whole lines and to already-fitted cells, never to a value on its way into
+   * one: an escape lengthens a string without occupying a column.
+   */
+  readonly paint?: Paint;
 }
 
 /**
@@ -89,9 +100,10 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
   // see far enough to tell.
   const names = shortenModelNames(data.buckets.flatMap((bucket) => bucket.models));
 
+  const paint = options.paint ?? PLAIN;
   const { columns, dropped } = describeColumns(options, widestModel(names));
-  const header = line(columns, (column) => column.label);
-  const coverage = formatCoverage(data.coverage, options.width, dropped);
+  const header = line(columns, (column) => column.label, paint, paint.heading);
+  const coverage = formatCoverage(data.coverage, options.width, dropped, paint);
 
   // The box is drawn even with nothing to label. A report that found no turns is
   // exactly when a reader needs to know what was searched, and the answer used to
@@ -106,11 +118,11 @@ export function formatReport(data: ReportData, options: RenderOptions): readonly
 
   return [
     ...formatTitle(data.coverage, options),
-    rule(columns, "top"),
+    paint.chrome(rule(columns, "top")),
     header,
-    rule(columns, "mid"),
+    paint.chrome(rule(columns, "mid")),
     ...formatBody(data.buckets, columns, options, names),
-    rule(columns, "bottom"),
+    paint.chrome(rule(columns, "bottom")),
     ...coverage,
   ];
 }
@@ -136,22 +148,41 @@ function formatTitle(coverage: Coverage, options: RenderOptions): readonly strin
       ? Number.POSITIVE_INFINITY
       : options.width - LAST_COLUMN_RESERVE - TITLE_PADDING * 2 - 2;
 
-  const lines = [
-    `${describeScope(coverage)} Token Usage Report - ${GROUPING_PHRASE[options.grouping]}`,
-    "",
-    ...describeAgents(coverage),
-    "",
-    ...describeSource(coverage),
-  ].flatMap((line) => (line === "" ? [""] : wrapWords(line, ceiling)));
+  const paint = options.paint ?? PLAIN;
+  // Each line carries the role it is printed in, rather than the role being
+  // inferred from its position. The unpriced count is the only line here a
+  // reader must not skim past, and finding it by index would break the moment
+  // another line is added above it.
+  const roles: readonly TitleLine[] = [
+    {
+      text: `${describeScope(coverage)} Token Usage Report - ${GROUPING_PHRASE[options.grouping]}`,
+      role: paint.emphasis,
+    },
+    { text: "" },
+    ...describeAgents(coverage).map((text) => ({ text })),
+    { text: "" },
+    ...describeSource(coverage, paint),
+  ];
 
-  const inner = Math.max(...lines.map((line) => line.length));
+  const lines = roles.flatMap(({ text, role }) =>
+    text === "" ? [{ text: "", role }] : wrapWords(text, ceiling).map((part) => ({ text: part, role })),
+  );
+
+  const inner = Math.max(...lines.map(({ text }) => text.length));
   const span = TITLE_BORDER.horizontal.repeat(inner + TITLE_PADDING * 2);
   const pad = " ".repeat(TITLE_PADDING);
 
+  // Painted after padding, so the cell is measured before it carries anything
+  // invisible, and the rules either side keep the colour every other rule has.
+  const body = lines.map(({ text, role }) => {
+    const filled = (role ?? ((value: string) => value))(text.padEnd(inner));
+    return `${paint.chrome(BORDER.vertical)}${pad}${filled}${pad}${paint.chrome(BORDER.vertical)}`;
+  });
+
   return [
-    `${TITLE_BORDER.topLeft}${span}${TITLE_BORDER.topRight}`,
-    ...lines.map((line) => `${BORDER.vertical}${pad}${line.padEnd(inner)}${pad}${BORDER.vertical}`),
-    `${TITLE_BORDER.botLeft}${span}${TITLE_BORDER.botRight}`,
+    paint.chrome(`${TITLE_BORDER.topLeft}${span}${TITLE_BORDER.topRight}`),
+    ...body,
+    paint.chrome(`${TITLE_BORDER.botLeft}${span}${TITLE_BORDER.botRight}`),
     "",
   ];
 }
@@ -167,18 +198,29 @@ function formatTitle(coverage: Coverage, options: RenderOptions): readonly strin
  * a number covers is looking at the number, and reading upwards past two hundred
  * rows to find the answer is the wrong direction.
  */
-function describeSource(coverage: Coverage): readonly string[] {
+function describeSource(coverage: Coverage, paint: Paint): readonly TitleLine[] {
   const window = describeWindow(coverage).replace(/^, /u, "");
-  const lines = [
-    window === "" ? coverage.timeZone : `${window}, ${coverage.timeZone}`,
-    `Priced at today's rates, from ${coverage.pricingVersion}`,
+  const lines: TitleLine[] = [
+    { text: window === "" ? coverage.timeZone : `${window}, ${coverage.timeZone}` },
+    { text: `Priced at today's rates, from ${coverage.pricingVersion}` },
   ];
 
+  // The one line in the box a reader must not skim past. An unpriced turn is a
+  // hole in the total, and the total does not look like it has one.
   if (coverage.unpricedTurns > 0) {
-    lines.push(`${plural(coverage.unpricedTurns, "turn")} could not be priced`);
+    lines.push({
+      text: `${plural(coverage.unpricedTurns, "turn")} could not be priced`,
+      role: paint.attention,
+    });
   }
 
   return lines;
+}
+
+/** One line of the title box, and how it is painted. Plain when no role is set. */
+interface TitleLine {
+  readonly text: string;
+  readonly role?: (text: string) => string;
 }
 
 /**
@@ -292,17 +334,18 @@ function formatBody(
 ): readonly string[] {
   const rows: string[] = [];
   const row = (bucket: Bucket, overrides: RowOverrides): readonly string[] =>
-    renderRow(bucket, columns, overrides, names);
+    renderRow(bucket, columns, overrides, names, options.paint ?? PLAIN);
 
   // Nesting groups rows that share a label, which only periods do. A session
   // belongs to exactly one agent by construction, so nesting a session report
   // would print a total row above a single child that repeats it, and the total
   // would lose the session's id on the way through the merge.
+  const paint = options.paint ?? PLAIN;
   const separator = rule(columns, "mid");
 
   if (!options.nested || options.grouping === "session") {
     for (const bucket of buckets) {
-      if (rows.length > 0) rows.push(separator);
+      if (rows.length > 0) rows.push(paint.chrome(separator));
       rows.push(...row(bucket, { label: bucket.label }));
     }
   } else {
@@ -312,7 +355,7 @@ function formatBody(
     // begins. Grouping is carried by the blank label column and by reading, and
     // reading is what the rule serves.
     for (const label of distinctLabels(buckets)) {
-      if (rows.length > 0) rows.push(separator);
+      if (rows.length > 0) rows.push(paint.chrome(separator));
 
       // The period total's models are exactly the union of the rows beneath it,
       // so printing them says nothing twice and makes the tallest row in the
@@ -320,15 +363,15 @@ function formatBody(
       const group = buckets.filter((bucket) => bucket.label === label);
       rows.push(...row(mergeBuckets(group, label), { label, agent: "All", models: [] }));
       for (const bucket of group) {
-        rows.push(separator);
+        rows.push(paint.chrome(separator));
         rows.push(...row(bucket, { label: ABSENT, agent: `- ${bucket.provider ?? ""}` }));
       }
     }
   }
 
   const total = mergeBuckets(buckets, "TOTAL");
-  rows.push(separator);
-  rows.push(...row(total, { label: "TOTAL", agent: ABSENT }));
+  rows.push(paint.chrome(separator));
+  rows.push(...renderRow(total, columns, { label: "TOTAL", agent: ABSENT }, names, paint, paint.emphasis));
 
   return rows;
 }
@@ -359,12 +402,14 @@ function renderRow(
   columns: readonly ReportColumn[],
   overrides: RowOverrides,
   names: ReadonlyMap<string, string>,
+  paint: Paint = PLAIN,
+  role?: (text: string) => string,
 ): readonly string[] {
   const values = describeValues(bucket, overrides, names);
   const height = Math.max(1, ...columns.map((column) => values[column.id].length));
 
   return Array.from({ length: height }, (_, index) =>
-    line(columns, (column) => values[column.id][index] ?? ABSENT),
+    line(columns, (column) => values[column.id][index] ?? ABSENT, paint, role),
   );
 }
 
@@ -374,15 +419,26 @@ function renderRow(
  * Every cell is padded, including the last: the row ends in a border rather than
  * in whitespace, so there is nothing to trim and no special case for the final
  * column. Borderless rows needed one and it was a source of ragged output.
+ *
+ * **Cells and rules are painted separately, never one inside the other.** Escape
+ * sequences do not nest: an inner reset ends the outer colour, so wrapping a
+ * whole row and then colouring a rule inside it leaves the rest of the row
+ * plain. Painting each piece once avoids the question entirely.
+ *
+ * Colour is applied after `fit`, so a cell is measured and padded before it
+ * carries anything invisible.
  */
 function line(
   columns: readonly ReportColumn[],
   cell: (column: ReportColumn) => string,
+  paint: Paint = PLAIN,
+  role: (text: string) => string = (text) => text,
 ): string {
   const pad = " ".repeat(CELL_PADDING);
-  const cells = columns.map((column) => `${pad}${fit(cell(column), column)}${pad}`);
+  const cells = columns.map((column) => `${pad}${role(fit(cell(column), column))}${pad}`);
+  const vertical = paint.chrome(BORDER.vertical);
 
-  return `${BORDER.vertical}${cells.join(BORDER.vertical)}${BORDER.vertical}`;
+  return `${vertical}${cells.join(vertical)}${vertical}`;
 }
 
 /**
@@ -631,7 +687,8 @@ function describeTier(
 function formatCoverage(
   coverage: Coverage,
   width: number | undefined,
-  droppedColumns: readonly string[] = [],
+  droppedColumns: readonly string[],
+  paint: Paint,
 ): readonly string[] {
   const ceiling = width === undefined ? Number.POSITIVE_INFINITY : width - LAST_COLUMN_RESERVE;
   const lines: string[] = [];
@@ -647,7 +704,7 @@ function formatCoverage(
         `Too narrow for every column, so these are not shown: ${droppedColumns.join(", ")}. ` +
           "Widen the window to see them.",
         ceiling,
-      ),
+      ).map((text) => paint.attention(text)),
     );
   }
 

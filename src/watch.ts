@@ -12,9 +12,11 @@ import {
   formatTurnRow,
   selectLayout,
 } from "./ui/live-table.js";
+import { PLAIN } from "./ui/colour.js";
 import { terminalWidth } from "./ui/terminal.js";
 import type { HistoryTotals } from "./ui/history.js";
 import type { Layout } from "./ui/live-table.js";
+import type { Paint } from "./ui/colour.js";
 import type { NormalizedTurn, ProviderAdapter, SessionRef, TokenUsage } from "./core/types.js";
 import type { PricingResolver } from "./pricing/types.js";
 
@@ -34,12 +36,20 @@ export interface WatchOptions {
    * reachable from a test, which is the rule `src/options.ts` already follows.
    */
   readonly terminalWidth?: number;
+  /**
+   * How each role is painted. Absent means plain, which is what every test uses.
+   *
+   * Chosen by the caller so this module never asks whether the output is a
+   * terminal; it already takes its width the same way.
+   */
+  readonly paint?: Paint;
 }
 
-/** Where rows go, and the layout the header committed them to. */
+/** Where rows go, the layout the header committed them to, and how they are painted. */
 interface TableOutput {
   readonly write: (line: string) => void;
   readonly layout: Layout;
+  readonly paint: Paint;
 }
 
 /** Mutable per-run state: the assembler plus what the CSV already holds. */
@@ -117,10 +127,11 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   // leave rows misaligned with the header they were printed under.
   const width = options.terminalWidth ?? terminalWidth(process.stdout);
   const layout = selectLayout(width);
+  const paint = options.paint ?? PLAIN;
 
   for (const line of formatHistoryBlock(history, width)) write(line);
   for (const line of describeNarrowing(layout, width)) write(line);
-  for (const line of formatTableHeader(layout)) write(line);
+  for (const line of formatTableHeader(layout, undefined, paint)) write(line);
 
   // Awaited: followLines opens the file and captures its rewrite anchor eagerly,
   // so the window between measuring startByte and reading from it stays closed.
@@ -129,7 +140,7 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   });
 
   for await (const line of lines) {
-    await consumeLine(line, options, recorder, { write, layout });
+    await consumeLine(line, options, recorder, { write, layout, paint });
   }
 }
 
@@ -301,7 +312,7 @@ async function consumeLine(
     await appendTurn(options.csvPath, turn);
     recorded += 1;
     if (output !== undefined) {
-      for (const row of formatTurnRow(output.layout, turn)) output.write(row);
+      for (const row of formatTurnRow(output.layout, turn, output.paint)) output.write(row);
     }
   }
 

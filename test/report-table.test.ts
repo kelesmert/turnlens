@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { REPORT_COMPACT_THRESHOLD, formatReport } from "../src/report/table.js";
+import { COLOUR } from "../src/ui/colour.js";
 import type { Bucket } from "../src/report/aggregate.js";
 import type { Coverage, ReportData } from "../src/report/collect.js";
 import type { TokenUsage } from "../src/core/types.js";
@@ -674,5 +675,59 @@ describe("formatReport, the coverage line", () => {
 
   it("names the pricing data it used, so an old figure stays explainable", () => {
     expect(formatReport(fixture(), WIDE).join("\n")).toMatch(/litellm@sha256:abcdef123456/u);
+  });
+});
+
+describe("formatReport, colour", () => {
+  const strip = (text: string): string => text.replaceAll(/\u001b\[[0-9;]*m/gu, "");
+
+  /**
+   * The whole reason colour is injected rather than decided inside the renderer.
+   * An escape lengthens a string without occupying a column, so a table that
+   * measured its own coloured output would come out ragged.
+   */
+  it("renders the same text coloured as plain", () => {
+    const plain = formatReport(fixture(), WIDE);
+    const painted = formatReport(fixture(), { ...WIDE, paint: COLOUR });
+
+    expect(painted.map(strip)).toEqual([...plain]);
+  });
+
+  it("keeps every line of the table one width once the escapes are removed", () => {
+    // From the table's top rule onwards. The title box is drawn with the same
+    // vertical rule and is deliberately narrower, so it is not part of this.
+    const stripped = formatReport(fixture(), { ...WIDE, paint: COLOUR }).map(strip);
+    const boxed = stripped
+      .slice(stripped.findIndex((line) => line.startsWith("┌")))
+      .filter((line) => /^[┌├└│]/u.test(line));
+    const widths = new Set(boxed.map((line) => line.length));
+
+    expect(boxed.length).toBeGreaterThan(4);
+    expect(widths.size).toBe(1);
+  });
+
+  /**
+   * The failure this whole design exists to prevent. Measured with the escapes
+   * still in, the box looks ragged by exactly the number of bytes colour added.
+   */
+  it("would not fit its own width if the escapes were counted", () => {
+    const painted = formatReport(fixture(), { ...WIDE, paint: COLOUR });
+    const rules = painted.filter((line) => /^\u001b.*┌/u.test(line));
+
+    expect(rules[0]?.length).toBeGreaterThan(strip(rules[0] ?? "").length);
+  });
+
+  it("paints nothing at all when no paint is given", () => {
+    for (const line of formatReport(fixture(), WIDE)) {
+      expect(line).not.toMatch(/\u001b/u);
+    }
+  });
+
+  it("marks the unpriced warning for attention", () => {
+    const painted = formatReport(unpricedFixture(), { ...WIDE, paint: COLOUR }).join("\n");
+    const warning = painted.split("\n").find((line) => line.includes("could not be priced"));
+
+    expect(warning).toBeDefined();
+    expect(warning).toMatch(/\u001b/u);
   });
 });

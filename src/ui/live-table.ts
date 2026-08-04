@@ -1,4 +1,6 @@
 import { truncate, truncateEnd } from "../core/text.js";
+import { PLAIN } from "./colour.js";
+import type { Paint } from "./colour.js";
 import type { NormalizedTurn, RateLimits, SessionRef } from "../core/types.js";
 
 const MODEL_WIDTH = 18;
@@ -109,12 +111,17 @@ export function formatWindowLabel(windowMinutes: number | undefined): string {
  * `rateLimits` only supplies the two limit-column headings. Passing none is the
  * normal case at startup, before any usage record has been seen.
  */
-export function formatTableHeader(layout: Layout, rateLimits?: RateLimits): readonly string[] {
-  const header = layout.columns
-    .map((column) => fit(labelFor(column, rateLimits), column))
-    .join(" ");
+export function formatTableHeader(
+  layout: Layout,
+  rateLimits?: RateLimits,
+  paint: Paint = PLAIN,
+): readonly string[] {
+  const cells = layout.columns.map((column) => fit(labelFor(column, rateLimits), column));
+  const header = cells.join(" ");
 
-  return [header, "-".repeat(header.length)];
+  // Painted after joining, because nothing inside the header carries a second
+  // role. The rule beneath it is chrome, which is a different one.
+  return [paint.heading(header), paint.chrome("-".repeat(header.length))];
 }
 
 /**
@@ -136,14 +143,43 @@ function labelFor(column: Column, rateLimits: RateLimits | undefined): string {
  * Always at least one line, never more than two, and never containing a newline:
  * the caller writes each returned string as its own line.
  */
-export function formatTurnRow(layout: Layout, turn: NormalizedTurn): readonly string[] {
+export function formatTurnRow(
+  layout: Layout,
+  turn: NormalizedTurn,
+  paint: Paint = PLAIN,
+): readonly string[] {
   const values = describeValues(turn);
-  const lines = [layout.columns.map((column) => fit(values[column.id], column)).join(" ")];
+  // Only the status cell is painted, and only when it says something. A
+  // completed turn is nine rows in ten; colouring the ordinary case is how the
+  // exceptional one stops standing out. Applied after `fit`, so the cell is
+  // measured and padded before it carries anything invisible.
+  const lines = [
+    layout.columns
+      .map((column) => {
+        const cell = fit(values[column.id], column);
+        return column.id === "status" ? paintStatus(turn.status, cell, paint) : cell;
+      })
+      .join(" "),
+  ];
 
   const breakdown = describeToolCalls(turn.toolCalls);
-  if (breakdown !== "") lines.push(formatToolCallLine(layout, breakdown));
+  if (breakdown !== "") lines.push(paint.chrome(formatToolCallLine(layout, breakdown)));
 
   return lines;
+}
+
+/**
+ * How a turn's status reads in colour.
+ *
+ * `aborted` is attention rather than error. The user pressed Ctrl+C; nothing
+ * failed, and an interrupted turn can be the most expensive one in a session,
+ * which is exactly why it should not be missed. `compacted` recedes: it is a
+ * boundary the agent drew, not something the reader did or needs to act on.
+ */
+function paintStatus(status: NormalizedTurn["status"], cell: string, paint: Paint): string {
+  if (status === "aborted") return paint.attention(cell);
+  if (status === "compacted") return paint.chrome(cell);
+  return cell;
 }
 
 /**
