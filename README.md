@@ -22,6 +22,17 @@ tokens it used and the tool calls it made.
       Tool calls: exec=1, exec_command=1
 ```
 
+> [!NOTE]
+> **Costs are API-equivalent.** Every figure is what those tokens would cost at
+> published API rates. If you are on a Codex or Claude subscription, nothing here
+> is charged to you; the number is what the same work would have cost through the
+> API. Reasoning tokens are part of `Output` and are shown separately for
+> visibility, which is why adding them again overshoots `Total`.
+>
+> **One gap is worth knowing up front:** Claude Code writes subagent work to a
+> separate transcript that TurnLens does not read, so a total that includes
+> subagent use is low by however much they spent. See [Limits](#limits).
+
 Works with **Codex** and **Claude Code** on **Linux, macOS and Windows**. It runs
 locally, has no runtime dependencies and never modifies agent session files.
 
@@ -94,6 +105,10 @@ which one to watch. On selection it prices the turns the session already closed
 and shows them as one summary line, then follows the transcript and prints a row
 each time a turn closes. Stop with Ctrl+C; a summary is printed on exit.
 
+Those earlier turns are counted in the on-screen summary only. **Only turns that
+close while you are watching are written to the CSV**, which is why a report and
+a CSV of the same session can hold different numbers of rows.
+
 ```bash
 turnlens                            # ask which agent, then which session
 turnlens codex                      # Codex, pick from its list
@@ -128,7 +143,7 @@ agent covers every agent rather than asking for one.
 One word after `report` says how the rows are grouped. There are four, and
 `daily` is what you get by leaving it out:
 
-| | |
+| Grouping | Rows |
 |---|---|
 | `daily` | one row per day, the default |
 | `weekly` | one row per week, beginning Monday |
@@ -176,6 +191,11 @@ turnlens claude report weekly --since 2026-07-01 --until 2026-07-31
 │            │ - opus-5    │              │              │             │
 └────────────┴─────────────┴──────────────┴──────────────┴─────────────┘
 ```
+
+That is a narrow terminal, which is why cache columns are missing and the costs
+look larger than the tokens beside them explain. Cache reads are most of what an
+agent spends; a wider terminal shows them, and `--json` always carries every
+category.
 
 A period that used more than one model gets a line per model rather than a cut
 list. Model names are shortened for reading; `--json` keeps the full identifier.
@@ -283,7 +303,7 @@ TurnLens's own state, the pricing cache and session locks, lives under
 Nothing here has to be set. Each variable exists because a default can be wrong
 on some machine.
 
-| | |
+| Variable | Purpose |
 |---|---|
 | `TURNLENS_HOME` | Where the pricing cache and session locks live. Default `~/.turnlens/`. |
 | `TZ` | Which timezone a report's days are cut on. Default is the machine's. Every report prints the zone it used. |
