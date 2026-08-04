@@ -251,7 +251,7 @@ function describeScope(coverage: Coverage): string {
 function describeAgents(coverage: Coverage): readonly string[] {
   if (coverage.agents.length === 0) return ["No agents found"];
 
-  const scale = `${plural(coverage.sessions, "session")} over ${plural(coverage.days, "day")}`;
+  const scale = `${countSessions(coverage.sessionsWithTurns, coverage.sessions)} over ${plural(coverage.days, "day")}`;
   if (coverage.agents.length === 1) return [scale];
 
   const width = Math.max(...coverage.agents.map((agent) => agentTitle(agent.provider).length));
@@ -260,9 +260,24 @@ function describeAgents(coverage: Coverage): readonly string[] {
     scale,
     "",
     ...coverage.agents.map(
-      (agent) => `${agentTitle(agent.provider).padEnd(width)}  ${plural(agent.sessions, "session")}`,
+      (agent) =>
+        `${agentTitle(agent.provider).padEnd(width)}  ${countSessions(agent.sessionsWithTurns, agent.sessions)}`,
     ),
   ];
+}
+
+/**
+ * Sessions counted, and how many were opened to find them.
+ *
+ * The two agree unless `--since` or `--until` narrowed the window, and then they
+ * are printed as "1 of 35 sessions". Every session on the machine must be opened
+ * because which one holds a given day is only knowable by looking, so the larger
+ * number is real work and worth showing; but printed alone beside a day count
+ * that *is* filtered, it read as though 35 sessions ran on that one day.
+ */
+function countSessions(counted: number, read: number): string {
+  if (counted === read) return plural(counted, "session");
+  return `${counted.toLocaleString("en-US")} of ${plural(read, "session")}`;
 }
 
 /** How an agent is written in a title, as a reader would say it aloud. */

@@ -30,10 +30,11 @@ function bucket(overrides: Partial<Bucket> = {}): Bucket {
 
 const COVERAGE: Coverage = {
   sessions: 2,
+  sessionsWithTurns: 2,
   days: 5,
   agents: [
-    { provider: "claude-code", sessions: 1 },
-    { provider: "codex", sessions: 1 },
+    { provider: "claude-code", sessions: 1, sessionsWithTurns: 1 },
+    { provider: "codex", sessions: 1, sessionsWithTurns: 1 },
   ],
   oldestDay: "2026-07-04",
   newestDay: "2026-08-02",
@@ -237,7 +238,7 @@ describe("formatReport, the title", () => {
   it("names the one agent in scope", () => {
     const data = {
       ...fixture(),
-      coverage: { ...COVERAGE, agents: [{ provider: "codex", sessions: 35 }] },
+      coverage: { ...COVERAGE, agents: [{ provider: "codex", sessions: 35, sessionsWithTurns: 35 }] },
     };
 
     expect(title(formatReport(data, WIDE))[1]).toMatch(/Codex Token Usage Report - Daily/u);
@@ -250,7 +251,7 @@ describe("formatReport, the title", () => {
   it("writes Claude Code as a reader would say it", () => {
     const data = {
       ...fixture(),
-      coverage: { ...COVERAGE, agents: [{ provider: "claude-code", sessions: 4 }] },
+      coverage: { ...COVERAGE, agents: [{ provider: "claude-code", sessions: 4, sessionsWithTurns: 4 }] },
     };
 
     expect(title(formatReport(data, WIDE))[1]).toMatch(/Claude Code Token Usage Report/u);
@@ -268,7 +269,7 @@ describe("formatReport, the title", () => {
   it("counts one session and one day in the singular", () => {
     const data = {
       ...fixture(),
-      coverage: { ...COVERAGE, sessions: 1, days: 1, agents: [{ provider: "codex", sessions: 1 }] },
+      coverage: { ...COVERAGE, sessions: 1, sessionsWithTurns: 1, days: 1, agents: [{ provider: "codex", sessions: 1, sessionsWithTurns: 1 }] },
     };
 
     expect(title(formatReport(data, WIDE)).join("\n")).toMatch(/1 session over 1 day\b/u);
@@ -285,7 +286,7 @@ describe("formatReport, the title", () => {
   it("gives no breakdown when the report was narrowed to one agent", () => {
     const data = {
       ...fixture(),
-      coverage: { ...COVERAGE, agents: [{ provider: "codex", sessions: 35 }] },
+      coverage: { ...COVERAGE, agents: [{ provider: "codex", sessions: 35, sessionsWithTurns: 35 }] },
     };
 
     expect(title(formatReport(data, WIDE)).join("\n")).not.toMatch(/Codex\s+35 sessions/u);
@@ -301,8 +302,8 @@ describe("formatReport, the title", () => {
       coverage: {
         ...COVERAGE,
         agents: [
-          { provider: "claude-code", sessions: 2 },
-          { provider: "codex", sessions: 0 },
+          { provider: "claude-code", sessions: 2, sessionsWithTurns: 2 },
+          { provider: "codex", sessions: 0, sessionsWithTurns: 0 },
         ],
       },
     };
@@ -678,7 +679,7 @@ describe("formatReport, the coverage line", () => {
 
   it("says it found nothing rather than printing an empty table", () => {
     const { oldestDay: _old, newestDay: _new, ...window } = COVERAGE;
-    const text = formatReport({ buckets: [], coverage: { ...window, sessions: 0 } }, WIDE).join("\n");
+    const text = formatReport({ buckets: [], coverage: { ...window, sessions: 0, sessionsWithTurns: 0 } }, WIDE).join("\n");
 
     expect(text).toMatch(/No turns/u);
   });
@@ -758,5 +759,48 @@ describe("formatReport, colour", () => {
 
     expect(warning).toBeDefined();
     expect(warning).toMatch(/\u001b/u);
+  });
+});
+
+describe("the sessions counted against the sessions read", () => {
+  function coverageLine(coverage: Partial<Coverage>): string {
+    return title(formatReport({ ...fixture(), coverage: { ...COVERAGE, ...coverage } }, WIDE)).join(
+      "\n",
+    );
+  }
+
+  it("prints one number when a window took everything", () => {
+    const lines = coverageLine({ sessions: 35, sessionsWithTurns: 35, days: 11 });
+
+    expect(lines).toContain("35 sessions over 11 days");
+    expect(lines).not.toContain(" of ");
+  });
+
+  it("prints both when a window narrowed the answer", () => {
+    // The defect: sessions counts files opened, days counts days that carried a
+    // turn. Printed alone beside each other they read as one fact.
+    expect(coverageLine({ sessions: 35, sessionsWithTurns: 1, days: 1 })).toContain(
+      "1 of 35 sessions over 1 day",
+    );
+  });
+
+  it("says none of them reached the window, rather than none existing", () => {
+    expect(coverageLine({ sessions: 2, sessionsWithTurns: 0, days: 0 })).toContain(
+      "0 of 2 sessions",
+    );
+  });
+
+  it("narrows a per-agent line the same way", () => {
+    const lines = coverageLine({
+      sessions: 39,
+      sessionsWithTurns: 3,
+      agents: [
+        { provider: "claude-code", sessions: 4, sessionsWithTurns: 2 },
+        { provider: "codex", sessions: 35, sessionsWithTurns: 1 },
+      ],
+    });
+
+    expect(lines).toContain("2 of 4 sessions");
+    expect(lines).toContain("1 of 35 sessions");
   });
 });

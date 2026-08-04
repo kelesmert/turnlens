@@ -26,10 +26,11 @@ function bucket(overrides: Partial<Bucket> = {}): Bucket {
 
 const COVERAGE: Coverage = {
   sessions: 2,
+  sessionsWithTurns: 2,
   days: 5,
   agents: [
-    { provider: "claude-code", sessions: 1 },
-    { provider: "codex", sessions: 1 },
+    { provider: "claude-code", sessions: 1, sessionsWithTurns: 1 },
+    { provider: "codex", sessions: 1, sessionsWithTurns: 1 },
   ],
   oldestDay: "2026-07-04",
   newestDay: "2026-08-02",
@@ -93,7 +94,7 @@ describe("formatReportJson", () => {
 
   it("emits an empty bucket list rather than nothing at all", () => {
     const { oldestDay: _old, newestDay: _new, ...window } = COVERAGE;
-    const parsed = JSON.parse(formatReportJson({ buckets: [], coverage: { ...window, sessions: 0 } }));
+    const parsed = JSON.parse(formatReportJson({ buckets: [], coverage: { ...window, sessions: 0, sessionsWithTurns: 0 } }));
 
     expect(parsed.buckets).toEqual([]);
     expect(parsed.coverage.sessions).toBe(0);

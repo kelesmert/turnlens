@@ -19,7 +19,10 @@ import type { Window } from "./window.js";
  */
 export interface AgentCoverage {
   readonly provider: string;
+  /** Sessions read. */
   readonly sessions: number;
+  /** Of those, the ones that put at least one turn inside the window. */
+  readonly sessionsWithTurns: number;
 }
 
 /**
@@ -37,7 +40,22 @@ export interface AgentCoverage {
  * agent only would put two meanings in one number.
  */
 export interface Coverage {
+  /**
+   * Sessions read, which under a window is not the same as sessions counted.
+   *
+   * Every session on the machine must be opened, because which one holds a given
+   * day is only knowable by looking. Kept because it is what separates "this
+   * window is empty" from "this machine is empty".
+   */
   readonly sessions: number;
+  /**
+   * Of those, the ones that contributed a turn.
+   *
+   * The number a reader wants beside the day count, and the two are now the same
+   * kind of fact. Printed alone when the two agree, which is every report
+   * without `--since` or `--until`.
+   */
+  readonly sessionsWithTurns: number;
   /**
    * Local days that carried at least one turn.
    *
@@ -93,6 +111,8 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
 
   const scope = await resolveScope(options);
   const perAgent = new Map<string, number>(options.agents.map((agent) => [agent.id, 0]));
+  const perAgentWithTurns = new Map<string, number>(options.agents.map((agent) => [agent.id, 0]));
+  let sessionsWithTurns = 0;
   const days = new Set<string>();
   // Computed once over every session in scope, because a prefix that is unique
   // among these rows is the thing a reader copies into `--id`.
@@ -101,6 +121,9 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
   for (const { adapter, session } of scope) {
     sessions += 1;
     perAgent.set(adapter.id, (perAgent.get(adapter.id) ?? 0) + 1);
+    // Raised by the first turn that survives the window, below. A session read
+    // and a session counted are different facts once a window narrows.
+    let reachedWindow = false;
 
     for await (const turn of replaySession({
       session,
@@ -119,6 +142,11 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
       const day = localDate(turn.startedAt ?? turn.at, options.timeZone);
       if (!withinWindow(day, options.window)) continue;
 
+      if (!reachedWindow) {
+        reachedWindow = true;
+        sessionsWithTurns += 1;
+        perAgentWithTurns.set(adapter.id, (perAgentWithTurns.get(adapter.id) ?? 0) + 1);
+      }
       days.add(day);
       if (oldestDay === undefined || day < oldestDay) oldestDay = day;
       if (newestDay === undefined || day > newestDay) newestDay = day;
@@ -137,8 +165,13 @@ export async function collect(options: CollectOptions): Promise<ReportData> {
     buckets: sort([...buckets.values()], options),
     coverage: {
       sessions,
+      sessionsWithTurns,
       days: days.size,
-      agents: [...perAgent].map(([provider, count]) => ({ provider, sessions: count })),
+      agents: [...perAgent].map(([provider, count]) => ({
+        provider,
+        sessions: count,
+        sessionsWithTurns: perAgentWithTurns.get(provider) ?? 0,
+      })),
       ...(oldestDay === undefined ? {} : { oldestDay }),
       ...(newestDay === undefined ? {} : { newestDay }),
       timeZone: options.timeZone,

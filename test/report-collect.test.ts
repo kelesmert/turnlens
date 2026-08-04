@@ -118,6 +118,35 @@ describe("collect, with a window", () => {
     // The sessions were still read, and the coverage still says so, which is what
     // distinguishes an empty window from an empty machine.
     expect(data.coverage.sessions).toBe(2);
+    // None of them put anything in the window, which is the other half of it.
+    expect(data.coverage.sessionsWithTurns).toBe(0);
+  });
+
+  it("counts sessions that reached the window separately from those it read", async () => {
+    // The defect this fixes: `sessions` counts files opened, because which file
+    // holds a given day is only knowable by opening it. Printed beside a day
+    // count that *is* filtered, it read as "35 sessions on that one day".
+    const all = await collect(await fixture({ window: {} }));
+    expect(all.coverage.sessions).toBe(2);
+    expect(all.coverage.sessionsWithTurns).toBe(2);
+    expect(all.coverage.days).toBe(2);
+
+    // Both fixture sessions are the same transcript, so any window either takes
+    // both or neither. What the pair proves is that one number follows the
+    // window and the other does not.
+    const outside = await collect(await fixture({ window: { since: "2027-01-01" } }));
+    expect(outside.coverage.sessions).toBe(2);
+    expect(outside.coverage.sessionsWithTurns).toBe(0);
+    expect(outside.coverage.days).toBe(0);
+  });
+
+  it("narrows the per-agent breakdown the same way", async () => {
+    const outside = await collect(await fixture({ window: { since: "2027-01-01" } }));
+    const codex = outside.coverage.agents.find((agent) => agent.provider === "codex");
+
+    // Still listed, because "searched and found nothing" is an answer.
+    expect(codex?.sessions).toBe(2);
+    expect(codex?.sessionsWithTurns).toBe(0);
   });
 });
 

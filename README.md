@@ -258,6 +258,12 @@ turnlens report --json | jq '[.buckets[].costUsd] | add'
 turnlens report --compact           # fewer columns whatever the width
 ```
 
+When a date bound narrows the window, the box says both how many sessions
+contributed and how many were read: `1 of 35 sessions over 1 day`. Every session
+on the machine has to be opened, because which one holds a given day is only
+knowable by looking, and the second number is what separates an empty window from
+an empty machine.
+
 `--json` prints one object with two keys. `buckets` is the rows, each carrying
 its label, turn count, every token category separately, its models as full
 identifiers, and its cost. `coverage` is what the box says: sessions read, days,
