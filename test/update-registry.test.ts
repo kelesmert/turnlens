@@ -70,11 +70,15 @@ describe("fetchLatestVersion", () => {
   });
 
   it("asks for json and gives up quickly", async () => {
-    const spy = vi.fn(async () => new Response(JSON.stringify({ latest: "0.2.0" })));
+    const spy = vi.fn(
+      async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ latest: "0.2.0" })),
+    );
     vi.stubGlobal("fetch", spy);
     await fetchLatestVersion();
 
-    const [, init] = spy.mock.calls[0] as [string, RequestInit];
+    const call = spy.mock.calls[0];
+    expect(call).toBeDefined();
+    const init = (call as [string, RequestInit])[1];
     expect((init.headers as Record<string, string>)["accept"]).toContain("json");
     expect(init.signal).toBeDefined();
   });
