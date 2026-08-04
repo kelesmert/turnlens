@@ -333,8 +333,11 @@ function formatBody(
   names: ReadonlyMap<string, string>,
 ): readonly string[] {
   const rows: string[] = [];
-  const row = (bucket: Bucket, overrides: RowOverrides): readonly string[] =>
-    renderRow(bucket, columns, overrides, names, options.paint ?? PLAIN);
+  const row = (
+    bucket: Bucket,
+    overrides: RowOverrides,
+    role?: (text: string) => string,
+  ): readonly string[] => renderRow(bucket, columns, overrides, names, paint, role);
 
   // Nesting groups rows that share a label, which only periods do. A session
   // belongs to exactly one agent by construction, so nesting a session report
@@ -361,7 +364,13 @@ function formatBody(
       // so printing them says nothing twice and makes the tallest row in the
       // table out of a repeat. The agents below carry the answer.
       const group = buckets.filter((bucket) => bucket.label === label);
-      rows.push(...row(mergeBuckets(group, label), { label, agent: "All", models: [] }));
+      // Emphasised, like the grand total it is a slice of. This row is what a
+      // reader scanning a nested report is actually looking for: the agents
+      // beneath it answer "which one", and it answers "how much". Two weights
+      // rather than three, so totals are one thing and details are another.
+      rows.push(
+        ...row(mergeBuckets(group, label), { label, agent: "All", models: [] }, paint.emphasis),
+      );
       for (const bucket of group) {
         rows.push(paint.chrome(separator));
         rows.push(...row(bucket, { label: ABSENT, agent: `- ${bucket.provider ?? ""}` }));

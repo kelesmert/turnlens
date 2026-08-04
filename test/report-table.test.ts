@@ -42,6 +42,16 @@ const COVERAGE: Coverage = {
   pricingVersion: "litellm@sha256:abcdef123456",
 };
 
+/** Escapes removed, so a shape can be recognised whether or not it is painted. */
+function strip(text: string): string {
+  return text.replaceAll(/\u001b\[[0-9;]*m/gu, "");
+}
+
+/** Whether a line is a given piece of box drawing, ignoring any colour on it. */
+function drawn(line: string, glyph: string): boolean {
+  return strip(line).startsWith(glyph);
+}
+
 /**
  * The table itself, with the title box above it discarded.
  *
@@ -49,7 +59,7 @@ const COVERAGE: Coverage = {
  * to the title cannot silently shift every assertion in this file by four.
  */
 function table(lines: readonly string[]): readonly string[] {
-  const top = lines.findIndex((line) => line.startsWith("┌"));
+  const top = lines.findIndex((line) => drawn(line, "┌"));
   return top === -1 ? lines : lines.slice(top);
 }
 
@@ -66,18 +76,18 @@ function header(lines: readonly string[]): string {
  */
 function body(lines: readonly string[]): readonly string[] {
   const rows = table(lines).slice(3);
-  const bottom = rows.findIndex((line) => line.startsWith("└"));
+  const bottom = rows.findIndex((line) => drawn(line, "└"));
   const beforeTotal = rows.slice(0, bottom === -1 ? rows.length : bottom);
-  const totalRule = beforeTotal.findLastIndex((line) => line.startsWith("├"));
+  const totalRule = beforeTotal.findLastIndex((line) => drawn(line, "├"));
 
   return (totalRule === -1 ? beforeTotal : beforeTotal.slice(0, totalRule)).filter(
-    (line) => !line.startsWith("├"),
+    (line) => !drawn(line, "├"),
   );
 }
 
 /** The cells of one rendered row, with the borders and their padding removed. */
 function cells(row: string): readonly string[] {
-  return row.split("│").slice(1, -1).map((cell) => cell.trim());
+  return strip(row).split("│").slice(1, -1).map((cell) => cell.trim());
 }
 
 function fixture(): ReportData {
@@ -110,7 +120,7 @@ const WIDE = { width: 200, compact: false, nested: false, grouping: "daily" } as
 
 /** The title box, which sits above the table's top rule. */
 function title(lines: readonly string[]): readonly string[] {
-  const top = lines.findIndex((line) => line.startsWith("┌"));
+  const top = lines.findIndex((line) => drawn(line, "┌"));
   return top === -1 ? [] : lines.slice(0, top);
 }
 
@@ -679,8 +689,6 @@ describe("formatReport, the coverage line", () => {
 });
 
 describe("formatReport, colour", () => {
-  const strip = (text: string): string => text.replaceAll(/\u001b\[[0-9;]*m/gu, "");
-
   /**
    * The whole reason colour is injected rather than decided inside the renderer.
    * An escape lengthens a string without occupying a column, so a table that
@@ -721,6 +729,27 @@ describe("formatReport, colour", () => {
     for (const line of formatReport(fixture(), WIDE)) {
       expect(line).not.toMatch(/\u001b/u);
     }
+  });
+
+  /**
+   * The row a reader scanning a nested report is actually looking for. The
+   * agents beneath it answer "which one"; it answers "how much", and it is what
+   * separates one period from the next.
+   */
+  it("emphasises a period total and leaves its agents plain", () => {
+    const rows = body(formatReport(nestedFixture(), { ...WIDE, nested: true, paint: COLOUR }));
+    const [parent, ...children] = rows;
+
+    expect(strip(parent ?? "")).toMatch(/All/u);
+    expect(parent).toMatch(/\u001b\[1m/u);
+    expect(children[0]).not.toMatch(/\u001b\[1m/u);
+  });
+
+  it("emphasises the grand total, at the same weight", () => {
+    const painted = formatReport(fixture(), { ...WIDE, paint: COLOUR });
+    const total = painted.find((line) => strip(line).includes("TOTAL"));
+
+    expect(total).toMatch(/\u001b\[1m/u);
   });
 
   it("marks the unpriced warning for attention", () => {
