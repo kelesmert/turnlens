@@ -56,7 +56,7 @@ Or for a permanent command:
 npm install -g turnlens
 ```
 
-Node 22 or newer. No runtime dependencies.
+Node 22 or newer.
 
 <details>
 <summary>From source</summary>
@@ -85,9 +85,6 @@ Everything is one of these, in this order:
 ```
 turnlens [claude | codex] [report [daily | weekly | monthly | session]] [options]
 ```
-
-For a one-off run without installing globally, put `npx turnlens@latest` where
-`turnlens` appears above.
 
 Agents are `claude` and `codex`. `claude-code` is accepted for `claude`; they are
 the same agent and reach the same place. Each mode documents its own flags:
@@ -231,19 +228,10 @@ per-agent counts, the window, the timezone, the unpriced count and the pricing
 version. There is no grand total, and a bucket with no cost omits `costUsd`
 rather than reporting zero, which is why summing is left to the consumer.
 
-### Colour
-
-Colour repeats what the text already says. Headings are cyan, rules are dim, a
-total is bold, and yellow marks the two things worth not missing: a turn that
-could not be priced, and a turn you interrupted. Strip the colour and no
-information is lost, which is why turning it off is not a degraded mode.
-
-```bash
-turnlens report --no-color
-NO_COLOR= turnlens report     # any value, including empty, turns it off
-```
-
-It is also off whenever output is not a terminal, and never present in `--json`.
+Colour never carries meaning of its own: yellow marks a turn that could not be
+priced and a turn you interrupted, both of which are spelled out in words too.
+Turn it off with `--no-color` or `NO_COLOR`. It is already off when output is not
+a terminal.
 
 ## How the numbers work
 
@@ -329,14 +317,6 @@ package, and carries on. `--offline` skips the check entirely.
 No subprocess is spawned to price anything, and nothing is fetched while a
 session is being watched.
 
-You can check the arithmetic yourself. This recomputes every row from its
-recorded token counts, using a second implementation written separately from the
-one under test:
-
-```bash
-npm run verify:costs -- turnlens-usage/claude-code/<session>.csv
-```
-
 ## Privacy
 
 **Session files are only ever read. TurnLens never writes to, moves or deletes
@@ -391,6 +371,13 @@ by allowlist: only the fields the parser reads are copied, so a field an agent
 adds later cannot leak by default.
 
 `npm run pricing:snapshot` regenerates the price list embedded in the package.
+
+`npm run verify:costs` recomputes every row of a CSV from its recorded token
+counts, using a second implementation written separately from the one under test:
+
+```bash
+npm run verify:costs -- turnlens-usage/claude-code/<session>.csv
+```
 
 ## Acknowledgment
 
