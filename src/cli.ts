@@ -25,6 +25,9 @@ import { terminalWidth } from "./ui/terminal.js";
 import { confirmYesNo } from "./ui/prompts.js";
 import { summariseCsv } from "./ui/summary.js";
 import { runWatch } from "./watch.js";
+import { formatUpdateNotice } from "./ui/update-notice.js";
+import { checkForUpdate } from "./update/check.js";
+import { resolveSelfVersion } from "./update/self-version.js";
 import type { CliOptions } from "./options.js";
 import type { ProviderAdapter, SessionRef } from "./core/types.js";
 import type { SessionMatch } from "./report/collect.js";
@@ -45,10 +48,39 @@ async function main(): Promise<void> {
     return;
   }
 
-  const pricing = await preparePricing(options);
+  // Both requests are issued together and awaited together, so the update check
+  // costs the slower of the two rather than the sum. Pricing fetches 1.7 MB on
+  // every non-offline run; this one is eighteen bytes.
+  const [pricing, latest] = await Promise.all([preparePricing(options), lookForUpdate(options)]);
+
+  // Printed before either mode starts, so it is not lost above a long report or
+  // buried under a table that is still filling.
+  if (latest !== undefined) {
+    write([...formatUpdateNotice(latest, currentVersion ?? ""), ""]);
+  }
 
   if (options.mode === "report") await report(options, pricing);
   else await watch(options, pricing);
+}
+
+/** Absent when `package.json` could not be read; then no notice is possible. */
+const currentVersion = resolveSelfVersion();
+
+/**
+ * The newest published version when it is worth mentioning.
+ *
+ * Shares `preparePricing`'s moment deliberately: `AGENTS.md` requires that
+ * nothing is fetched once a session is being watched or a report is being
+ * built, and this is the one place before both.
+ */
+async function lookForUpdate(options: CliOptions): Promise<string | undefined> {
+  if (currentVersion === undefined) return undefined;
+  return await checkForUpdate({
+    currentVersion,
+    offline: options.offline,
+    env: process.env,
+    isTty: process.stdout.isTTY === true,
+  });
 }
 
 /**
