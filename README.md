@@ -338,7 +338,7 @@ Worth knowing before you trust a number:
   agent writes its transcripts in a format TurnLens does not read, so it will
   find nothing rather than report a partial figure. Each agent is a self-
   contained adapter, so a third is a contained piece of work rather than a
-  rewrite, but none is scheduled.
+  rewrite, but none is scheduled. If you want one, open an issue.
 - **One session at a time.** A lock under `~/.turnlens/locks/` stops two
   watchers recording the same session twice. A lock left behind by a process that
   is no longer running is reclaimed automatically, and TurnLens says so.
@@ -360,6 +360,17 @@ Worth knowing before you trust a number:
   right-hand border a column or two out of line. This is a measurement gap, not a
   font problem, and it is known: terminals disagree with each other about emoji
   width, so a partial fix would be exact for CJK and a guess for emoji.
+
+## Feedback
+
+Bug reports, feature ideas and support for another agent all belong in
+[issues](https://github.com/kelesmert/turnlens/issues). A number that looks wrong
+is the most useful report of all: say which agent, paste the row and what you
+expected, and if you can, run the same window through another usage tool so there
+is something to compare against.
+
+Released versions and what changed in each are under
+[releases](https://github.com/kelesmert/turnlens/releases).
 
 ## Development
 
