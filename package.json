@@ -1,6 +1,6 @@
 {
   "name": "turnlens",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Per-turn token and cost monitoring for AI coding agents",
   "keywords": [
     "codex",
