@@ -334,6 +334,11 @@ price list.
 
 Worth knowing before you trust a number:
 
+- **Two agents, and only those two.** Codex and Claude Code. Any other coding
+  agent writes its transcripts in a format TurnLens does not read, so it will
+  find nothing rather than report a partial figure. Each agent is a self-
+  contained adapter, so a third is a contained piece of work rather than a
+  rewrite, but none is scheduled.
 - **One session at a time.** A lock under `~/.turnlens/locks/` stops two
   watchers recording the same session twice. A lock left behind by a process that
   is no longer running is reclaimed automatically, and TurnLens says so.
