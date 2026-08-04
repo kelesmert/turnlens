@@ -188,6 +188,75 @@ information is lost, which is why turning it off is not a degraded mode. It is
 off for `--no-color`, off if `NO_COLOR` is set to anything at all, off whenever
 output is not a terminal, and never present in `--json`.
 
+### Examples
+
+Watching one session:
+
+```bash
+turnlens                            # ask which agent, then which session
+turnlens codex                      # Codex, pick from the list
+turnlens claude --id a3f2c891       # skip the list
+turnlens --id a3f2c891              # the id alone says which agent
+turnlens codex --prompt-preview     # also record 20 characters of each prompt
+turnlens claude --offline           # never touch the network
+```
+
+A prefix is enough for `--id`, as long as it is unique. If more than one session
+answers to it you are shown the matches and asked which; piped input is not
+asked and the command stops instead.
+
+Counting what has been spent:
+
+```bash
+turnlens report                     # every agent, by day
+turnlens codex report               # Codex only, by day
+turnlens claude report weekly       # weeks begin Monday
+turnlens claude report monthly
+turnlens report session             # one row per session, every agent
+```
+
+One session, two ways:
+
+```bash
+turnlens codex report session --id a3f2          # its total, one row
+turnlens codex report session --id a3f2 daily    # the same session, day by day
+```
+
+Narrowing to a window. Both bounds are inclusive, both take `YYYY-MM-DD`, and
+either can stand alone:
+
+```bash
+turnlens report --since 2026-07-01
+turnlens report --until 2026-07-31
+turnlens claude report weekly --since 2026-07-01 --until 2026-07-31
+```
+
+Handing a report to something else:
+
+```bash
+turnlens report --json > usage.json
+turnlens report --json | jq '[.buckets[].costUsd] | add'
+turnlens report --compact           # fewer columns whatever the width
+turnlens report --no-color
+NO_COLOR= turnlens report           # any value, including empty, turns it off
+```
+
+`--json` prints one object with two keys. `buckets` is the rows, each carrying
+its label, turn count, every token category separately, its models as full
+identifiers, and its cost. `coverage` is what the box above the table says:
+sessions read, days, per-agent counts, the window, the timezone, the unpriced
+count and the pricing version. There is no grand total; a bucket with no cost
+omits `costUsd` rather than reporting zero, which is why summing is left to the
+consumer.
+
+Finding your way around. Each mode documents only its own flags:
+
+```bash
+turnlens --help
+turnlens claude --help              # what watching takes
+turnlens claude report --help       # what a report takes
+```
+
 ## What counts as a turn
 
 One prompt and everything the agent did to answer it. A turn closes when the
