@@ -63,6 +63,13 @@ copy is right until the next flag is added.
   the CSV: deduping, renumbering and appending.
 - **Display width is deliberately counted in code units.** A half-built Unicode
   table that is wrong in a new way is worse than an honest note.
+- **Colour is a `Paint` passed in, applied after fitting, and never nested.**
+  A renderer never asks whether colour is on: the default is `PLAIN`, which is
+  why every width test measures what a reader sees. An escape lengthens a string
+  without occupying a column, so painting a value on its way into `fit` makes the
+  cell short by its own escapes. And escapes do not nest, so cells and rules are
+  painted separately: an inner reset ends the outer colour and the rest of the
+  row comes out plain. Stripping every escape must leave the output unchanged.
 - **A change is not finished until the document its `update-when` names is
   edited**, where such a document exists. See below.
 
