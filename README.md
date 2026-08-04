@@ -287,8 +287,8 @@ on some machine.
 |---|---|
 | `TURNLENS_HOME` | Where the pricing cache and session locks live. Default `~/.turnlens/`. |
 | `TZ` | Which timezone a report's days are cut on. Default is the machine's. Every report prints the zone it used. |
-| `NO_COLOR` | Set to anything, including empty, to turn colour off. |
-| `COLUMNS` | Table width, in characters. Overrides what the terminal reports, which is the only way to correct a bad measurement. |
+| `NO_COLOR` | Turns colour off. See above. |
+| `COLUMNS` | Table width in characters, overriding what the terminal reports. The only way to correct a measurement that is wrong, as it can be under tmux or over SSH. Ignored when output is not a terminal, where there is no window to fit. |
 | `CODEX_HOME` | Where Codex keeps its sessions. |
 | `CLAUDE_CONFIG_DIR` | Where Claude Code keeps its sessions. |
 | `XDG_CONFIG_HOME` | Consulted for Claude Code when `CLAUDE_CONFIG_DIR` is unset. |
