@@ -76,6 +76,17 @@ describe("formatHelp", () => {
     expect(text).toMatch(/--json/u);
   });
 
+  /**
+   * The root level is the one that had it missing, and the one people type. A
+   * bug report is asked for `turnlens --version`, so the level that answers
+   * "what can I run" has to be a level that names it.
+   */
+  it("names --version at every level", () => {
+    for (const level of ["root", "agent", "report"] as const) {
+      expect(formatHelp(level)).toMatch(/--version/u);
+    }
+  });
+
   /** The flag was public from 30 July until this work removed it. */
   it("never mentions --provider, which no longer exists", () => {
     for (const level of ["root", "agent", "report"] as const) {
