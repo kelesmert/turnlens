@@ -89,9 +89,9 @@ lines if so:
 npm install -g turnlens@latest
 ```
 
-It asks nothing else and installs nothing. The check is skipped under
-`--offline`, under `NO_UPDATE_NOTIFIER`, in CI, and whenever output is not a
-terminal.
+It asks nothing else and installs nothing. The notice goes to stderr, so it never
+lands in a file or a pipe you redirected. The check is skipped under `--offline`,
+under `NO_UPDATE_NOTIFIER`, in CI, and whenever there is no terminal to print to.
 
 <details>
 <summary>From source</summary>
