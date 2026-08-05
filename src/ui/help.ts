@@ -50,6 +50,7 @@ const ROOT = [
   "",
   "  turnlens claude --help          what watching takes",
   "  turnlens claude report --help   what a report takes",
+  "  turnlens --version              which version this is",
   "",
 ];
 

@@ -327,8 +327,8 @@ An empty cost is always explained by the `cost_status` column. TurnLens never
 records a cost of zero for a model it could not price, because a zero joins a
 spreadsheet sum and cannot be told apart from a genuinely free turn.
 
-TurnLens's own state, the pricing cache and session locks, lives under
-`~/.turnlens/`.
+TurnLens's own state, the pricing cache, session locks and the update check,
+lives under `~/.turnlens/`.
 
 ## Environment
 
