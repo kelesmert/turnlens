@@ -1,7 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { toFiniteFloat, toFiniteInt } from "../core/numbers.js";
-import { CSV_HEADER, parseCsvRow } from "../core/store/csv.js";
+import { addUsage, emptyUsage } from "../core/usage.js";
 import { wrapWords } from "../core/text.js";
+import type { NormalizedTurn, TokenUsage } from "../core/types.js";
 
 const LABEL_WIDTH = 24;
 const ABSENT = "-";
@@ -13,116 +12,165 @@ const ABSENT = "-";
  */
 const RULE_RESERVE = 1;
 
-interface Totals {
-  inputUncached: number;
-  cacheRead: number;
-  output: number;
-  reasoning: number;
-  total: number;
-  toolCalls: number;
+/**
+ * Everything the history block and the exit summary say, folded from turns.
+ *
+ * **Folded rather than read back.** This used to be computed by reparsing the
+ * session CSV, which made the summary a statement about one file: a run that
+ * recorded nothing still reported the whole file's totals, and the figures
+ * changed with the directory the command was run from, because that is where the
+ * CSV lands. Turns come from the transcript, so these figures describe the
+ * session and nothing else.
+ *
+ * The cost is therefore at today's rates throughout, matching the history block
+ * above the table. A recorded row still carries the rate that was in force when
+ * its turn closed; that is what the CSV is for, and nothing here reads it.
+ *
+ * Durations are kept as a count, a sum and a maximum rather than as a list,
+ * because only an average and a longest are printed and a list grows with the
+ * session.
+ */
+export interface SessionTotals {
+  readonly turns: number;
+  readonly aborted: number;
+  readonly usage: TokenUsage;
+  readonly toolCalls: number;
+  /** Absent when nothing here could be priced. Absent never means free. */
+  readonly costUsd?: number;
+  readonly pricedTurns: number;
+  readonly unpricedTurns: number;
+  /** Keyed by `costStatus`, which is why a turn could not be priced. */
+  readonly unpricedReasons: ReadonlyMap<string, number>;
+  readonly pricingVersions: ReadonlyMap<string, number>;
+  readonly models: ReadonlyMap<string, number>;
+  readonly efforts: ReadonlyMap<string, number>;
+  readonly tools: ReadonlyMap<string, number>;
+  readonly durationCount: number;
+  readonly durationTotalMs: number;
+  readonly longestDurationMs: number;
+}
+
+export function emptyTotals(): SessionTotals {
+  return {
+    turns: 0,
+    aborted: 0,
+    usage: emptyUsage(),
+    toolCalls: 0,
+    pricedTurns: 0,
+    unpricedTurns: 0,
+    unpricedReasons: new Map(),
+    pricingVersions: new Map(),
+    models: new Map(),
+    efforts: new Map(),
+    tools: new Map(),
+    durationCount: 0,
+    durationTotalMs: 0,
+    longestDurationMs: 0,
+  };
 }
 
 /**
- * Summarises the turns recorded in one session CSV.
+ * Folds one turn in, returning new totals.
  *
- * Describes the contents of that file only, never the account as a whole. The
- * cost total covers only the turns that could be priced; turns that could not
- * be are counted separately rather than folded in as free, because a zero and
- * an unknown are different facts and only one of them belongs in a sum.
+ * Pure, like `report/aggregate.ts`'s fold and for the same reason: a caller can
+ * keep the session's running totals beside anything else without the two
+ * interfering.
  */
-export async function summariseCsv(
-  path: string,
+export function addTurn(totals: SessionTotals, turn: NormalizedTurn): SessionTotals {
+  const priced = turn.costUsd !== undefined;
+  const duration = turn.durationMs;
+
+  return {
+    turns: totals.turns + 1,
+    aborted: totals.aborted + (turn.status === "aborted" ? 1 : 0),
+    usage: addUsage(totals.usage, turn.usage),
+    toolCalls: totals.toolCalls + countToolCalls(turn),
+    pricedTurns: totals.pricedTurns + (priced ? 1 : 0),
+    unpricedTurns: totals.unpricedTurns + (priced ? 0 : 1),
+    unpricedReasons: priced
+      ? totals.unpricedReasons
+      : counted(totals.unpricedReasons, turn.costStatus),
+    pricingVersions: counted(totals.pricingVersions, turn.pricingVersion),
+    models: counted(totals.models, turn.model),
+    efforts: counted(totals.efforts, turn.reasoningEffort),
+    tools: withToolCalls(totals.tools, turn.toolCalls),
+    durationCount: totals.durationCount + (duration === undefined ? 0 : 1),
+    durationTotalMs: totals.durationTotalMs + (duration ?? 0),
+    longestDurationMs: Math.max(totals.longestDurationMs, duration ?? 0),
+    ...sumCost(totals.costUsd, turn.costUsd),
+  };
+}
+
+/**
+ * Adds two costs, keeping absent distinct from zero.
+ *
+ * Returned as an object to spread rather than as a number, because the field has
+ * to stay absent when neither side has one: a zero would join a spreadsheet sum
+ * and could not be told from a session that genuinely cost nothing.
+ */
+function sumCost(
+  running: number | undefined,
+  addition: number | undefined,
+): { readonly costUsd?: number } {
+  if (addition === undefined) return running === undefined ? {} : { costUsd: running };
+  return { costUsd: (running ?? 0) + addition };
+}
+
+/**
+ * Renders the block printed when monitoring ends.
+ *
+ * Describes the session, never the account as a whole. The cost total covers
+ * only the turns that could be priced; turns that could not be are counted
+ * separately rather than folded in as free, because a zero and an unknown are
+ * different facts and only one of them belongs in a sum.
+ */
+export function formatSessionSummary(
+  totals: SessionTotals,
   availableWidth?: number,
-): Promise<readonly string[]> {
+): readonly string[] {
   const ceiling =
     availableWidth === undefined ? Number.POSITIVE_INFINITY : availableWidth - RULE_RESERVE;
 
-  let contents: string;
-  try {
-    contents = await readFile(path, "utf8");
-  } catch {
-    return ["", "Session summary unavailable: the CSV could not be read.", ""];
-  }
+  if (totals.turns === 0) return boxed(["No turns in this session."], ceiling);
 
-  const rows = contents.split("\n").filter((row) => row.trim() !== "").slice(1);
-  if (rows.length === 0) return boxed(["No recorded turns."], ceiling);
-
-  const totals: Totals = {
-    inputUncached: 0,
-    cacheRead: 0,
-    output: 0,
-    reasoning: 0,
-    total: 0,
-    toolCalls: 0,
-  };
-  const models = new Map<string, number>();
-  const efforts = new Map<string, number>();
-  const tools = new Map<string, number>();
-  const durations: number[] = [];
-  let aborted = 0;
-  let costUsd = 0;
-  let pricedTurns = 0;
-  const unpriced = new Map<string, number>();
-  const pricingVersions = new Map<string, number>();
-
-  for (const row of rows) {
-    // Parsed as CSV rather than split on commas: a session name or prompt
-    // preview may legitimately contain one, which would shift every later column.
-    const fields = parseCsvRow(row);
-    const read = (column: (typeof CSV_HEADER)[number]): string =>
-      fields[CSV_HEADER.indexOf(column)] ?? "";
-
-    totals.inputUncached += toFiniteInt(read("input_uncached"), 0);
-    totals.cacheRead += toFiniteInt(read("cache_read"), 0);
-    totals.output += toFiniteInt(read("output_including_reasoning"), 0);
-    totals.reasoning += toFiniteInt(read("reasoning_subset"), 0);
-    totals.total += toFiniteInt(read("total_tokens"), 0);
-    totals.toolCalls += toFiniteInt(read("tool_call_count"), 0);
-
-    if (read("status") === "aborted") aborted += 1;
-    countValue(models, read("model"));
-    countValue(efforts, read("reasoning_effort"));
-    addToolCalls(tools, read("tool_calls_json"));
-
-    const rowCost = toFiniteFloat(read("estimated_cost_usd"));
-    const costStatus = read("cost_status");
-    if (rowCost === undefined) countValue(unpriced, costStatus === "" ? "unknown" : costStatus);
-    else {
-      costUsd += rowCost;
-      pricedTurns += 1;
-    }
-    countValue(pricingVersions, read("pricing_version"));
-
-    const durationMs = toFiniteInt(read("duration_ms"));
-    if (durationMs !== undefined) durations.push(durationMs);
-  }
-
-  const totalInput = totals.inputUncached + totals.cacheRead;
-  const cacheRatio = totalInput === 0 ? 0 : (totals.cacheRead / totalInput) * 100;
+  const { usage } = totals;
+  const totalInput = usage.inputUncached + usage.cacheRead;
+  const cacheRatio = totalInput === 0 ? 0 : (usage.cacheRead / totalInput) * 100;
 
   const lines = [
-    entry("Recorded turns", formatCount(rows.length)),
-    entry("Aborted turns", formatCount(aborted)),
-    entry("Uncached input tokens", formatCount(totals.inputUncached)),
-    entry("Cache read tokens", formatCount(totals.cacheRead)),
+    entry("Session turns", formatCount(totals.turns)),
+    entry("Aborted turns", formatCount(totals.aborted)),
+    entry("Uncached input tokens", formatCount(usage.inputUncached)),
+    entry("Cache read tokens", formatCount(usage.cacheRead)),
     entry("Cache ratio", `${cacheRatio.toFixed(1)}%`),
-    entry("Output tokens", formatCount(totals.output)),
-    entry("Reasoning tokens", formatCount(totals.reasoning)),
-    entry("Total tokens", formatCount(totals.total)),
+    entry("Output tokens", formatCount(usage.output)),
+    entry("Reasoning tokens", formatCount(usage.reasoning)),
+    entry("Total tokens", formatCount(usage.total)),
     entry("Tool calls", formatCount(totals.toolCalls)),
-    entry("Estimated cost", pricedTurns === 0 ? "unavailable" : `$${costUsd.toFixed(6)}`),
-    entry("Average duration", formatSeconds(average(durations))),
-    entry("Longest duration", formatSeconds(longest(durations))),
+    entry(
+      "Estimated cost",
+      totals.pricedTurns === 0 || totals.costUsd === undefined
+        ? "unavailable"
+        : `$${totals.costUsd.toFixed(6)}`,
+    ),
+    entry("Average duration", formatSeconds(averageDuration(totals))),
+    entry("Longest duration", formatSeconds(longestDuration(totals))),
   ];
 
-  if (unpriced.size > 0) {
-    const total = [...unpriced.values()].reduce((sum, count) => sum + count, 0);
-    lines.push(entry("Unpriced turns", `${formatCount(total)} (${describe(unpriced)})`));
+  if (totals.unpricedTurns > 0) {
+    lines.push(
+      entry(
+        "Unpriced turns",
+        `${formatCount(totals.unpricedTurns)} (${describe(totals.unpricedReasons)})`,
+      ),
+    );
   }
-  if (pricingVersions.size > 0) lines.push(entry("Pricing data", describe(pricingVersions)));
-  if (models.size > 0) lines.push(entry("Models", describe(models)));
-  if (efforts.size > 0) lines.push(entry("Reasoning efforts", describe(efforts)));
-  if (tools.size > 0) lines.push(entry("Tool breakdown", describe(tools)));
+  if (totals.pricingVersions.size > 0) {
+    lines.push(entry("Pricing data", describe(totals.pricingVersions)));
+  }
+  if (totals.models.size > 0) lines.push(entry("Models", describe(totals.models)));
+  if (totals.efforts.size > 0) lines.push(entry("Reasoning efforts", describe(totals.efforts)));
+  if (totals.tools.size > 0) lines.push(entry("Tool breakdown", describe(totals.tools)));
 
   return boxed(lines, ceiling);
 }
@@ -162,26 +210,33 @@ function boxed(entries: readonly string[], ceiling: number): readonly string[] {
   return ["", "Session summary", rule, ...body, rule];
 }
 
-function countValue(counter: Map<string, number>, key: string): void {
-  if (key === "") return;
-  counter.set(key, (counter.get(key) ?? 0) + 1);
+/** Returns a counter with one added against `key`. An empty key counts nothing. */
+function counted(counter: ReadonlyMap<string, number>, key: string): ReadonlyMap<string, number> {
+  if (key === "") return counter;
+  return new Map(counter).set(key, (counter.get(key) ?? 0) + 1);
 }
 
-/** Adds one row's tool counts. An unreadable cell is skipped, never guessed at. */
-function addToolCalls(counter: Map<string, number>, json: string): void {
-  if (json === "") return;
+/**
+ * Folds a turn's tool calls into the running breakdown.
+ *
+ * The turn carries them as an object, so nothing is parsed here. The CSV column
+ * holding the same figures is written from this object rather than read back
+ * into it.
+ */
+function withToolCalls(
+  counter: ReadonlyMap<string, number>,
+  calls: Readonly<Record<string, number>>,
+): ReadonlyMap<string, number> {
+  const entries = Object.entries(calls);
+  if (entries.length === 0) return counter;
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(json) as unknown;
-  } catch {
-    return;
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return;
+  const next = new Map(counter);
+  for (const [name, count] of entries) next.set(name, (next.get(name) ?? 0) + count);
+  return next;
+}
 
-  for (const [name, count] of Object.entries(parsed)) {
-    counter.set(name, (counter.get(name) ?? 0) + toFiniteInt(count, 0));
-  }
+function countToolCalls(turn: NormalizedTurn): number {
+  return Object.values(turn.toolCalls).reduce((sum, count) => sum + count, 0);
 }
 
 function describe(counter: ReadonlyMap<string, number>): string {
@@ -191,13 +246,13 @@ function describe(counter: ReadonlyMap<string, number>): string {
     .join(", ");
 }
 
-function average(values: readonly number[]): number | undefined {
-  if (values.length === 0) return undefined;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+function averageDuration(totals: SessionTotals): number | undefined {
+  if (totals.durationCount === 0) return undefined;
+  return totals.durationTotalMs / totals.durationCount;
 }
 
-function longest(values: readonly number[]): number | undefined {
-  return values.length === 0 ? undefined : Math.max(...values);
+function longestDuration(totals: SessionTotals): number | undefined {
+  return totals.durationCount === 0 ? undefined : totals.longestDurationMs;
 }
 
 function formatCount(value: number): string {

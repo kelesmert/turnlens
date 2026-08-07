@@ -3,7 +3,7 @@ import { appendTurn, openCsv, turnRowKey } from "./core/store/csv.js";
 import { wrapWords } from "./core/text.js";
 import { byteLength, followLines, readCompleteLines } from "./core/tail.js";
 import { TurnAssembler } from "./core/turn-assembler.js";
-import { addUsage, emptyUsage } from "./core/usage.js";
+import { addTurn, emptyTotals } from "./ui/summary.js";
 import { formatHistoryBlock } from "./ui/history.js";
 import {
   FULL_TABLE_WIDTH,
@@ -14,7 +14,7 @@ import {
 } from "./ui/live-table.js";
 import { PLAIN } from "./ui/colour.js";
 import { terminalWidth } from "./ui/terminal.js";
-import type { HistoryTotals } from "./ui/history.js";
+import type { SessionTotals } from "./ui/summary.js";
 import type { Layout } from "./ui/live-table.js";
 import type { Paint } from "./ui/colour.js";
 import type { NormalizedTurn, ProviderAdapter, SessionRef, TokenUsage } from "./core/types.js";
@@ -43,6 +43,14 @@ export interface WatchOptions {
    * terminal; it already takes its width the same way.
    */
   readonly paint?: Paint;
+  /**
+   * Reports the session's running totals, for whoever prints the exit summary.
+   *
+   * A callback rather than a return value because `cli.ts` prints the summary
+   * from a `finally` block: a run that throws must still report what it had
+   * accumulated, and a value returned from a throwing call never arrives.
+   */
+  readonly onTotals?: (totals: SessionTotals) => void;
 }
 
 /** Where rows go, the layout the header committed them to, and how they are painted. */
@@ -52,11 +60,12 @@ interface TableOutput {
   readonly paint: Paint;
 }
 
-/** Mutable per-run state: the assembler plus what the CSV already holds. */
+/** Mutable per-run state: the assembler, what has been written, and the session's totals. */
 interface Recorder {
   readonly assembler: TurnAssembler;
   readonly recordedKeys: Set<string>;
   turnNumber: number;
+  totals: SessionTotals;
 }
 
 /**
@@ -119,7 +128,7 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   const history = await readHistory(options, startByte);
   const recorder = await createRecorder(
     options,
-    history.turns,
+    history,
     baseline === undefined ? {} : { baseline },
   );
 
@@ -130,6 +139,7 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   const layout = selectLayout(width);
   const paint = options.paint ?? PLAIN;
 
+  options.onTotals?.(history);
   for (const line of formatHistoryBlock(history, width)) write(line);
   for (const line of describeNarrowing(layout, width)) write(line);
   for (const line of formatTableHeader(layout, paint)) write(line);
@@ -190,8 +200,9 @@ function overrideCommand(platform: NodeJS.Platform): string {
 /**
  * Builds the recorder, and seeds its numbering from the session rather than the file.
  *
- * `turnsBefore` is how many turns the transcript already held when monitoring
- * started, so the first turn recorded here is the session's next one. Taking it
+ * `history` is what the transcript already held when monitoring started, so the
+ * first turn recorded here is the session's next one, and the summary at exit
+ * covers the whole session rather than only this run. Taking the number from
  * from the CSV instead made a row's number a fact about the file: the same turn
  * was numbered 16 from one directory and 7 from another, because the CSV lands
  * where the command was run. A number that describes the conversation is the
@@ -199,7 +210,7 @@ function overrideCommand(platform: NodeJS.Platform): string {
  */
 async function createRecorder(
   options: WatchOptions,
-  turnsBefore: number,
+  history: SessionTotals,
   baseline: { readonly baseline?: TokenUsage },
 ): Promise<Recorder> {
   const state = await openCsv(options.csvPath);
@@ -211,7 +222,8 @@ async function createRecorder(
       ...baseline,
     }),
     recordedKeys: new Set(state.recordedKeys),
-    turnNumber: turnsBefore,
+    turnNumber: history.turns,
+    totals: history,
   };
 }
 
@@ -234,12 +246,8 @@ async function createRecorder(
 async function readHistory(
   options: WatchOptions,
   stopAtByte: number,
-): Promise<HistoryTotals> {
-  let turns = 0;
-  let unpricedTurns = 0;
-  let pricedTurns = 0;
-  let costUsd = 0;
-  let usage = emptyUsage();
+): Promise<SessionTotals> {
+  let totals = emptyTotals();
 
   for await (const turn of replaySession({
     session: options.session,
@@ -247,18 +255,10 @@ async function readHistory(
     pricing: options.pricing,
     stopAtByte,
   })) {
-    turns += 1;
-    usage = addUsage(usage, turn.usage);
-    if (turn.costUsd === undefined) unpricedTurns += 1;
-    else {
-      costUsd += turn.costUsd;
-      pricedTurns += 1;
-    }
+    totals = addTurn(totals, turn);
   }
 
-  // Absent rather than zero when nothing could be priced. A zero would read as a
-  // free session and would join a sum as one.
-  return { turns, usage, unpricedTurns, ...(pricedTurns === 0 ? {} : { costUsd }) };
+  return totals;
 }
 
 /**
@@ -322,6 +322,8 @@ async function consumeLine(
     });
 
     await appendTurn(options.csvPath, turn);
+    recorder.totals = addTurn(recorder.totals, turn);
+    options.onTotals?.(recorder.totals);
     recorded += 1;
     if (output !== undefined) {
       for (const row of formatTurnRow(output.layout, turn, output.paint)) output.write(row);

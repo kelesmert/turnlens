@@ -23,7 +23,7 @@ import { formatAgentListing, formatSessionListing } from "./ui/live-table.js";
 import { selectPaint } from "./ui/colour.js";
 import { terminalWidth } from "./ui/terminal.js";
 import { confirmYesNo } from "./ui/prompts.js";
-import { summariseCsv } from "./ui/summary.js";
+import { emptyTotals, formatSessionSummary } from "./ui/summary.js";
 import { runWatch } from "./watch.js";
 import { formatUpdateNotice } from "./ui/update-notice.js";
 import { checkForUpdate } from "./update/check.js";
@@ -231,6 +231,11 @@ async function watch(options: CliOptions, pricing: PricingResolver): Promise<voi
     ),
   );
 
+  // Held outside the try so the summary survives a failed run: `runWatch`
+  // reports its running totals as it goes, and the last report is what the
+  // `finally` prints however the watch ended.
+  let totals = emptyTotals();
+
   try {
     await runWatch({
       session: selected,
@@ -240,9 +245,12 @@ async function watch(options: CliOptions, pricing: PricingResolver): Promise<voi
       pricing,
       signal: controller.signal,
       paint: selectPaint(process.stdout, process.env, options.noColour),
+      onTotals: (updated) => {
+        totals = updated;
+      },
     });
   } finally {
-    write(await summariseCsv(csvPath, terminalWidth(process.stdout)));
+    write(formatSessionSummary(totals, terminalWidth(process.stdout)));
     await lock.release();
   }
 }

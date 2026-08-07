@@ -1,14 +1,5 @@
 import { wrapWords } from "../core/text.js";
-import type { TokenUsage } from "../core/types.js";
-
-/** What the session already held when the watch started. */
-export interface HistoryTotals {
-  readonly turns: number;
-  readonly usage: TokenUsage;
-  /** Absent when no turn in the history could be priced. Absent never means free. */
-  readonly costUsd?: number;
-  readonly unpricedTurns: number;
-}
+import type { SessionTotals } from "./summary.js";
 
 /**
  * Describes the turns a session closed before the watch started.
@@ -24,7 +15,7 @@ export interface HistoryTotals {
  * describe and a block reading zero is noise.
  */
 export function formatHistoryBlock(
-  totals: HistoryTotals,
+  totals: SessionTotals,
   /** Absent when there is no terminal to measure, as in a pipe. Nothing wraps. */
   availableWidth: number | undefined,
 ): readonly string[] {

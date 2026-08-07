@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatHistoryBlock } from "../src/ui/history.js";
+import { emptyTotals } from "../src/ui/summary.js";
+import type { SessionTotals } from "../src/ui/summary.js";
 import type { TokenUsage } from "../src/core/types.js";
 
 const USAGE: TokenUsage = {
@@ -16,6 +18,11 @@ function text(lines: readonly string[]): string {
   return lines.join("\n");
 }
 
+/** The block reads four fields; the rest of the session's totals are irrelevant here. */
+function totals(overrides: Partial<SessionTotals> = {}): SessionTotals {
+  return { ...emptyTotals(), usage: USAGE, ...overrides };
+}
+
 describe("formatHistoryBlock", () => {
   /**
    * A session with nothing closed before the watch started has no history to
@@ -23,12 +30,12 @@ describe("formatHistoryBlock", () => {
    * fill with the real thing.
    */
   it("says nothing when the session has no closed turns", () => {
-    expect(formatHistoryBlock({ turns: 0, usage: USAGE, unpricedTurns: 0 }, 80)).toEqual([]);
+    expect(formatHistoryBlock(totals({ turns: 0, unpricedTurns: 0 }), 80)).toEqual([]);
   });
 
   it("names the turn count, the tokens and the cost", () => {
     const lines = formatHistoryBlock(
-      { turns: 48, usage: USAGE, costUsd: 4.82, unpricedTurns: 0 },
+      totals({ turns: 48, costUsd: 4.82, unpricedTurns: 0 }),
       80,
     );
 
@@ -39,7 +46,7 @@ describe("formatHistoryBlock", () => {
 
   it("says the figure is at today's rates, because a recorded row would not be", () => {
     const lines = formatHistoryBlock(
-      { turns: 48, usage: USAGE, costUsd: 4.82, unpricedTurns: 0 },
+      totals({ turns: 48, costUsd: 4.82, unpricedTurns: 0 }),
       80,
     );
 
@@ -51,7 +58,7 @@ describe("formatHistoryBlock", () => {
    * absent, never a zero. A zero here would read as a free session.
    */
   it("prints no figure at all when nothing could be priced", () => {
-    const lines = formatHistoryBlock({ turns: 2, usage: USAGE, unpricedTurns: 2 }, 80);
+    const lines = formatHistoryBlock(totals({ turns: 2, unpricedTurns: 2 }), 80);
 
     expect(text(lines)).not.toMatch(/\$/u);
     expect(text(lines)).toMatch(/unavailable/u);
@@ -60,7 +67,7 @@ describe("formatHistoryBlock", () => {
 
   it("says how many turns could not be priced when some could", () => {
     const lines = formatHistoryBlock(
-      { turns: 48, usage: USAGE, costUsd: 4.82, unpricedTurns: 3 },
+      totals({ turns: 48, costUsd: 4.82, unpricedTurns: 3 }),
       80,
     );
 
@@ -70,7 +77,7 @@ describe("formatHistoryBlock", () => {
 
   it("says nothing about pricing when every turn was priced", () => {
     const lines = formatHistoryBlock(
-      { turns: 48, usage: USAGE, costUsd: 4.82, unpricedTurns: 0 },
+      totals({ turns: 48, costUsd: 4.82, unpricedTurns: 0 }),
       80,
     );
 
@@ -79,7 +86,7 @@ describe("formatHistoryBlock", () => {
 
   it("fits the width it was given", () => {
     for (const line of formatHistoryBlock(
-      { turns: 48, usage: USAGE, costUsd: 4.82, unpricedTurns: 3 },
+      totals({ turns: 48, costUsd: 4.82, unpricedTurns: 3 }),
       40,
     )) {
       expect(line.length).toBeLessThanOrEqual(40);
@@ -87,7 +94,7 @@ describe("formatHistoryBlock", () => {
   });
 
   it("uses the singular for one unpriced turn", () => {
-    const lines = formatHistoryBlock({ turns: 3, usage: USAGE, costUsd: 1, unpricedTurns: 1 }, 80);
+    const lines = formatHistoryBlock(totals({ turns: 3, costUsd: 1, unpricedTurns: 1 }), 80);
 
     expect(text(lines)).toMatch(/1 turn could not be priced/u);
     expect(text(lines)).not.toMatch(/1 turns/u);

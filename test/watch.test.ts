@@ -7,6 +7,7 @@ import { byteLength } from "../src/core/tail.js";
 import { createCodexAdapter } from "../src/providers/codex/sessions.js";
 import { describeNarrowing, importHistory, runWatch } from "../src/watch.js";
 import { createPricingResolver } from "../src/pricing/resolver.js";
+import { emptyTotals, formatSessionSummary } from "../src/ui/summary.js";
 import {
   FULL_TABLE_WIDTH,
   MINIMUM_TABLE_WIDTH,
@@ -302,6 +303,43 @@ describe("runWatch over a session that is still being written", () => {
 
     expect(await numbersWith()).toEqual(["12", "13"]);
     expect(await numbersWith(`${CSV_HEADER.join(",")}\n${seededRow}\n`)).toEqual(["12", "13"]);
+  });
+
+  /**
+   * The exit summary used to reparse the CSV, so it described one file: a run
+   * that recorded nothing still reported that file's totals, and the figures
+   * moved with the directory the command was run from. It now folds the
+   * session's own turns, so it covers the prefix that closed before the watcher
+   * attached even when the watcher records nothing at all.
+   */
+  it("reports the whole session's totals, including turns that closed before it attached", async () => {
+    const records = (await readFile(FIXTURE, "utf8")).split("\n").filter((l) => l.trim() !== "");
+    const dir = await mkdtemp(join(tmpdir(), "turnlens-totals-"));
+    const sessionPath = join(dir, "prefix.jsonl");
+    await writeFile(sessionPath, `${records.slice(0, SPLIT_AFTER_RECORD).join("\n")}\n`, "utf8");
+
+    const controller = new AbortController();
+    controller.abort();
+    let totals = emptyTotals();
+
+    await runWatch({
+      session: { ...SESSION, path: sessionPath },
+      adapter: createCodexAdapter(),
+      csvPath: join(dir, "session.csv"),
+      includePromptPreview: false,
+      pricing: await offlineResolver(),
+      signal: controller.signal,
+      write: () => undefined,
+      onTotals: (updated) => {
+        totals = updated;
+      },
+    });
+
+    // Aborted before the first line was followed, so nothing was recorded and
+    // every figure below comes from the prefix the transcript already held.
+    expect(totals.turns).toBe(11);
+    expect(totals.usage.total).toBeGreaterThan(0);
+    expect(formatSessionSummary(totals).join("\n")).toContain("Session turns           : 11");
   });
 
   it("says nothing about history for a session with nothing closed yet", async () => {

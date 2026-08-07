@@ -1,14 +1,12 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { appendTurn, openCsv } from "../src/core/store/csv.js";
-import { summariseCsv } from "../src/ui/summary.js";
+import { addTurn, emptyTotals, formatSessionSummary } from "../src/ui/summary.js";
 import { emptyUsage } from "../src/core/usage.js";
 import type { NormalizedTurn } from "../src/core/types.js";
+import type { SessionTotals } from "../src/ui/summary.js";
 
-async function tempCsv(): Promise<string> {
-  return join(await mkdtemp(join(tmpdir(), "turnlens-sum-")), "session.csv");
+/** Folds a session's turns the way `runWatch` does, then renders the block. */
+function fold(turns: readonly NormalizedTurn[]): SessionTotals {
+  return turns.reduce(addTurn, emptyTotals());
 }
 
 function turn(overrides: Partial<NormalizedTurn> = {}): NormalizedTurn {
@@ -39,31 +37,22 @@ function unpricedTurn(overrides: Partial<NormalizedTurn> = {}): NormalizedTurn {
   return { ...rest, costStatus: "model_unknown" };
 }
 
-async function summaryOf(turns: readonly NormalizedTurn[]): Promise<string> {
-  const path = await tempCsv();
-  await openCsv(path);
-  for (const each of turns) await appendTurn(path, each);
-  return (await summariseCsv(path)).join("\n");
+function summaryOf(turns: readonly NormalizedTurn[], width?: number): string {
+  return formatSessionSummary(fold(turns), width).join("\n");
 }
 
-describe("summariseCsv", () => {
-  it("reports no recorded turns for a file holding only the header", async () => {
-    expect(await summaryOf([])).toContain("No recorded turns");
+describe("formatSessionSummary", () => {
+  it("says so plainly when the session closed no turns at all", () => {
+    expect(summaryOf([])).toContain("No turns in this session");
   });
 
-  it("reports unreadable rather than inventing zeroes when the file is missing", async () => {
-    const path = join(await mkdtemp(join(tmpdir(), "turnlens-sum-")), "absent.csv");
-
-    expect((await summariseCsv(path)).join("\n")).toMatch(/unavailable|could not be read/iu);
-  });
-
-  it("totals tokens, cache ratio and tools, counting aborted turns separately", async () => {
-    const text = await summaryOf([
+  it("totals tokens, cache ratio and tools, counting aborted turns separately", () => {
+    const text = summaryOf([
       turn({ turnNumber: 1, turnId: "a" }),
       turn({ turnNumber: 2, turnId: "b", status: "aborted" }),
     ]);
 
-    expect(text).toContain("Recorded turns          : 2");
+    expect(text).toContain("Session turns           : 2");
     expect(text).toContain("Aborted turns           : 1");
     expect(text).toContain("Uncached input tokens   : 1,800");
     expect(text).toContain("Cache read tokens       : 200");
@@ -73,8 +62,8 @@ describe("summariseCsv", () => {
     expect(text).toContain("Tool calls              : 4");
   });
 
-  it("breaks down models, efforts and tools by frequency", async () => {
-    const text = await summaryOf([
+  it("breaks down models, efforts and tools by frequency", () => {
+    const text = summaryOf([
       turn({ turnNumber: 1, turnId: "a" }),
       turn({ turnNumber: 2, turnId: "b", model: "gpt-5.6-terra", reasoningEffort: "low" }),
       turn({ turnNumber: 3, turnId: "c", toolCalls: { exec: 1, web_search: 5 } }),
@@ -87,15 +76,15 @@ describe("summariseCsv", () => {
     expect(text).toContain("exec=5");
   });
 
-  it("never reports an unpriced turn as free", async () => {
-    const text = await summaryOf([unpricedTurn()]);
+  it("never reports an unpriced turn as free", () => {
+    const text = summaryOf([unpricedTurn()]);
 
     expect(text).not.toContain("$0.0000");
     expect(text).not.toContain("$0.000000");
   });
 
-  it("reports average and longest duration only from turns that recorded one", async () => {
-    const text = await summaryOf([
+  it("reports average and longest duration only from turns that recorded one", () => {
+    const text = summaryOf([
       turn({ turnNumber: 1, turnId: "a", durationMs: 10_000 }),
       turn({ turnNumber: 2, turnId: "b", durationMs: 20_000 }),
       turn({ turnNumber: 3, turnId: "c" }),
@@ -105,35 +94,33 @@ describe("summariseCsv", () => {
     expect(text).toContain("Longest duration        : 20.0s");
   });
 
-  it("shows a dash for duration when no turn recorded one", async () => {
-    expect(await summaryOf([turn()])).toContain("Average duration        : -");
+  it("shows a dash for duration when no turn recorded one", () => {
+    expect(summaryOf([turn()])).toContain("Average duration        : -");
   });
 
-  it("reports a zero cache ratio without dividing by zero", async () => {
-    const text = await summaryOf([
+  it("reports a zero cache ratio without dividing by zero", () => {
+    const text = summaryOf([
       turn({ usage: { ...emptyUsage(), output: 10, total: 10 } }),
     ]);
 
     expect(text).toContain("Cache ratio             : 0.0%");
   });
 
-  it("handles a session name containing a comma without shifting columns", async () => {
-    const text = await summaryOf([turn({ sessionName: "a, b", model: "gpt-5.6-sol" })]);
+  it("handles a session name containing a comma without shifting columns", () => {
+    const text = summaryOf([turn({ sessionName: "a, b", model: "gpt-5.6-sol" })]);
 
     expect(text).toContain("Total tokens            : 1,050");
     expect(text).toContain("gpt-5.6-sol=1");
   });
 });
 
-describe("summariseCsv reports cost", () => {
-  it("totals the costs it can and counts the turns it cannot price", async () => {
-    const path = await tempCsv();
-    await openCsv(path);
-    await appendTurn(path, turn({ turnNumber: 1, turnId: "a", costUsd: 0.038_044 }));
-    await appendTurn(path, turn({ turnNumber: 2, turnId: "b", costUsd: 0.001_956 }));
-    await appendTurn(path, unpricedTurn({ turnNumber: 3, turnId: "c" }));
-
-    const text = (await summariseCsv(path)).join("\n");
+describe("formatSessionSummary reports cost", () => {
+  it("totals the costs it can and counts the turns it cannot price", () => {
+    const text = summaryOf([
+      turn({ turnNumber: 1, turnId: "a", costUsd: 0.038_044 }),
+      turn({ turnNumber: 2, turnId: "b", costUsd: 0.001_956 }),
+      unpricedTurn({ turnNumber: 3, turnId: "c" }),
+    ]);
 
     expect(text).toContain("Estimated cost          : $0.040000");
     expect(text).toContain("Unpriced turns          : 1 (model_unknown=1)");
@@ -141,13 +128,8 @@ describe("summariseCsv reports cost", () => {
     expect(text).not.toContain("not implemented yet");
   });
 
-  it("says so plainly when nothing could be priced", async () => {
-    const path = await tempCsv();
-    await openCsv(path);
-    await appendTurn(path, unpricedTurn());
-
-    const text = (await summariseCsv(path)).join("\n");
-    expect(text).toContain("Estimated cost          : unavailable");
+  it("says so plainly when nothing could be priced", () => {
+    expect(summaryOf([unpricedTurn()])).toContain("Estimated cost          : unavailable");
   });
 });
 
@@ -157,12 +139,8 @@ describe("summary block width", () => {
    * rule was a fixed 72 while a tool breakdown measured 106, so the block drew
    * a box its own contents broke out of. This is the last line the user sees.
    */
-  it("draws its rule around its own longest line", async () => {
-    const csvPath = await tempCsv();
-    await openCsv(csvPath);
-    await appendTurn(csvPath, turn({ toolCalls: manyTools() }));
-
-    const lines = await summariseCsv(csvPath);
+  it("draws its rule around its own longest line", () => {
+    const lines = formatSessionSummary(fold([turn({ toolCalls: manyTools() })]));
     const longest = Math.max(...lines.map((line) => line.length));
 
     for (const rule of lines.filter((line) => /^=+$/u.test(line))) {
@@ -170,25 +148,17 @@ describe("summary block width", () => {
     }
   });
 
-  it("keeps every line inside the terminal it is printed into", async () => {
-    const csvPath = await tempCsv();
-    await openCsv(csvPath);
-    await appendTurn(csvPath, turn({ toolCalls: manyTools() }));
-
+  it("keeps every line inside the terminal it is printed into", () => {
     for (const width of [60, 80, 120]) {
-      for (const line of await summariseCsv(csvPath, width)) {
+      for (const line of formatSessionSummary(fold([turn({ toolCalls: manyTools() })]), width)) {
         expect(line.length).toBeLessThanOrEqual(width - 1);
       }
     }
   });
 
   /** Wrapping may move a name to the next line; it may never lose one. */
-  it("still reports every tool once the breakdown is wrapped", async () => {
-    const csvPath = await tempCsv();
-    await openCsv(csvPath);
-    await appendTurn(csvPath, turn({ toolCalls: manyTools() }));
-
-    const text = (await summariseCsv(csvPath, 80)).join("\n");
+  it("still reports every tool once the breakdown is wrapped", () => {
+    const text = summaryOf([turn({ toolCalls: manyTools() })], 80);
 
     for (const name of Object.keys(manyTools())) expect(text).toContain(name);
   });
