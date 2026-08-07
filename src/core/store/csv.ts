@@ -54,9 +54,11 @@ export async function readRecordedKeys(path: string): Promise<ReadonlySet<string
     return new Set();
   }
 
+  // Blank lines are dropped before the header is skipped, not after. Skipping
+  // the first physical line instead would read the header as a row on any file
+  // that opens with a blank one.
   const keys = new Set<string>();
-  for (const row of contents.split("\n").slice(1)) {
-    if (row.trim() === "") continue;
+  for (const row of contents.split("\n").filter((line) => line.trim() !== "").slice(1)) {
     const fields = parseCsvRow(row);
     keys.add(
       turnRowKey({

@@ -427,6 +427,19 @@ describe("readRecordedKeys", () => {
     expect((await readRecordedKeys(path)).size).toBe(0);
   });
 
+  /** A leading blank line must not turn the header itself into a row. */
+  it("skips the header even when the file opens with a blank line", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    const recorded = turn({ turnNumber: 1, turnId: "turn-a" });
+    await appendTurn(path, recorded);
+    await writeFile(path, `\n${await readFile(path, "utf8")}`, "utf8");
+
+    const keys = await readRecordedKeys(path);
+
+    expect([...keys]).toEqual([turnRowKey(recorded)]);
+  });
+
   /** A watch that has not written yet asks about a file that does not exist. */
   it("holds nothing for a file that does not exist", async () => {
     const path = await tempCsv();

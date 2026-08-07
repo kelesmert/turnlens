@@ -17,7 +17,7 @@ import { terminalWidth } from "./ui/terminal.js";
 import type { SessionTotals } from "./ui/summary.js";
 import type { Layout } from "./ui/live-table.js";
 import type { Paint } from "./ui/colour.js";
-import type { NormalizedTurn, ProviderAdapter, SessionRef, TokenUsage } from "./core/types.js";
+import type { ProviderAdapter, SessionRef, TokenUsage } from "./core/types.js";
 import type { PricingResolver } from "./pricing/types.js";
 
 export interface WatchOptions {
@@ -208,7 +208,7 @@ function overrideCommand(platform: NodeJS.Platform): string {
  * `history` is what the transcript already held when monitoring started, so the
  * first turn recorded here is the session's next one, and the summary at exit
  * covers the whole session rather than only this run. Taking the number from
- * from the CSV instead made a row's number a fact about the file: the same turn
+ * the CSV instead made a row's number a fact about the file: the same turn
  * was numbered 16 from one directory and 7 from another, because the CSV lands
  * where the command was run. A number that describes the conversation is the
  * same number everywhere, and needs no file to produce it.
