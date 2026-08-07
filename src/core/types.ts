@@ -24,19 +24,6 @@ export interface TokenUsage {
 }
 
 /**
- * Raw rate-limit values as reported by the agent.
- *
- * Informational only. TurnLens makes no claim about what quota these map to,
- * and window labels are derived from the reported minutes rather than assumed.
- */
-export interface RateLimits {
-  readonly primaryUsedPercent?: number;
-  readonly primaryWindowMinutes?: number;
-  readonly secondaryUsedPercent?: number;
-  readonly secondaryWindowMinutes?: number;
-}
-
-/**
  * One meaningful thing that happened in a session, normalised across providers.
  *
  * Discriminated on `kind` so the assembler switches exhaustively: adding a
@@ -64,7 +51,6 @@ export type ProviderEvent =
       readonly usage: TokenUsage;
       /** Set by per-event providers to suppress records the agent logged twice. */
       readonly dedupKey?: string;
-      readonly rateLimits?: RateLimits;
     }
   | { readonly kind: "toolCall"; readonly at: string; readonly name: string; readonly callId?: string }
   | {
@@ -121,7 +107,6 @@ export interface NormalizedTurn {
   /** Which pricing document produced `costUsd`, so an old row stays explainable. */
   readonly pricingVersion: string;
   readonly durationMs?: number;
-  readonly rateLimits?: RateLimits;
 }
 
 export interface SessionRef {

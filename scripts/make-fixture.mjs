@@ -38,7 +38,6 @@ const USAGE_KEYS = [
   "reasoning_output_tokens",
   "total_tokens",
 ];
-const LIMIT_KEYS = ["used_percent", "window_minutes"];
 
 /** Returns the anonymized record, or undefined to drop it. */
 function anonymize(record) {
@@ -79,19 +78,7 @@ function anonymizeEventPayload(payload) {
   switch (payload["type"]) {
     case "token_count": {
       const totals = payload["info"]?.total_token_usage;
-      const limits = payload["rate_limits"];
-      return {
-        type: "token_count",
-        info: { total_token_usage: pick(totals, USAGE_KEYS) },
-        ...(isRecord(limits)
-          ? {
-              rate_limits: {
-                primary: pick(limits["primary"], LIMIT_KEYS),
-                secondary: pick(limits["secondary"], LIMIT_KEYS),
-              },
-            }
-          : {}),
-      };
+      return { type: "token_count", info: { total_token_usage: pick(totals, USAGE_KEYS) } };
     }
 
     // last_agent_message is deliberately not copied.

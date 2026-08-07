@@ -26,10 +26,6 @@ export const CSV_HEADER = [
   "estimated_cost_usd",
   "cost_status",
   "pricing_version",
-  "primary_used_percent",
-  "primary_window_minutes",
-  "secondary_used_percent",
-  "secondary_window_minutes",
   "duration_ms",
 ] as const;
 
@@ -106,9 +102,10 @@ export async function openCsv(path: string): Promise<CsvState> {
         "",
         `Expected:\n${HEADER_LINE}`,
         "",
-        "The schema gained cost_status and pricing_version when native pricing",
-        "was added. This file was written by an earlier version. It is left",
-        "untouched: move or rename it and TurnLens will start a new one.",
+        "The schema last changed when the four rate-limit columns were removed,",
+        "and gained cost_status and pricing_version before that. A file written by",
+        "an earlier version is left untouched: move or rename it and TurnLens will",
+        "start a new one.",
       ].join("\n"),
     );
   }
@@ -175,10 +172,6 @@ export async function appendTurn(path: string, turn: NormalizedTurn): Promise<vo
     turn.costUsd === undefined ? "" : formatCostUsd(turn.costUsd),
     turn.costStatus,
     turn.pricingVersion,
-    optionalNumber(turn.rateLimits?.primaryUsedPercent),
-    optionalNumber(turn.rateLimits?.primaryWindowMinutes),
-    optionalNumber(turn.rateLimits?.secondaryUsedPercent),
-    optionalNumber(turn.rateLimits?.secondaryWindowMinutes),
     optionalNumber(turn.durationMs),
   ];
 

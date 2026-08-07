@@ -8,7 +8,6 @@ import {
   formatSessionListing,
   formatTableHeader,
   formatTurnRow,
-  formatWindowLabel,
   selectLayout,
 } from "../src/ui/live-table.js";
 import { emptyUsage } from "../src/core/usage.js";
@@ -55,37 +54,7 @@ function unpricedTurn(): NormalizedTurn {
   return { ...rest, costStatus: "model_unknown" };
 }
 
-describe("formatWindowLabel", () => {
-  it("renders a dash when the window length is unknown", () => {
-    expect(formatWindowLabel(undefined)).toBe("-");
-    expect(formatWindowLabel(0)).toBe("-");
-  });
-
-  it("renders whole days, hours and minutes from the recorded value", () => {
-    expect(formatWindowLabel(10_080)).toBe("7d");
-    expect(formatWindowLabel(1_440)).toBe("1d");
-    expect(formatWindowLabel(300)).toBe("5h");
-    expect(formatWindowLabel(60)).toBe("1h");
-    expect(formatWindowLabel(45)).toBe("45m");
-  });
-});
-
 describe("formatTableHeader", () => {
-  it("labels the limit columns from the recorded windows rather than fixed text", () => {
-    const [header] = formatTableHeader(fullLayout, { primaryWindowMinutes: 300, secondaryWindowMinutes: 10_080 });
-
-    expect(header).toContain("5h");
-    expect(header).toContain("7d");
-  });
-
-  it("never claims a five-hour or weekly quota when no window has been observed", () => {
-    const [header] = formatTableHeader(fullLayout);
-
-    expect(header).not.toContain("5 hour");
-    expect(header).not.toContain("Week");
-    expect(header).toContain("-");
-  });
-
   it("returns the column line followed by a separator rule", () => {
     const lines = formatTableHeader(fullLayout);
 
@@ -130,13 +99,13 @@ describe("selectLayout", () => {
    * where a dropped column is data the reader cannot get back.
    */
   it("keeps every column when no width is known", () => {
-    expect(fullLayout.columns).toHaveLength(16);
+    expect(fullLayout.columns).toHaveLength(14);
     expect(fullLayout.width).toBe(FULL_TABLE_WIDTH);
   });
 
   it("keeps every column when the terminal is wide enough", () => {
-    expect(idsAt(FULL_TABLE_WIDTH)).toHaveLength(16);
-    expect(idsAt(FULL_TABLE_WIDTH + 40)).toHaveLength(16);
+    expect(idsAt(FULL_TABLE_WIDTH)).toHaveLength(14);
+    expect(idsAt(FULL_TABLE_WIDTH + 40)).toHaveLength(14);
   });
 
   it("keeps eleven columns at the width Windows Terminal opens to", () => {
@@ -294,14 +263,10 @@ describe("formatTurnRow", () => {
     expect(row).not.toContain("undefined");
   });
 
-  it("renders duration in seconds and rate limits as percentages", () => {
-    const [row = ""] = formatTurnRow(
-      fullLayout,
-      turn({ durationMs: 17_691, rateLimits: { primaryUsedPercent: 73 } }),
-    );
+  it("renders duration in seconds", () => {
+    const [row = ""] = formatTurnRow(fullLayout, turn({ durationMs: 17_691 }));
 
     expect(row).toContain("17.7s");
-    expect(row).toContain("73.0%");
   });
 
   it("truncates an over-long model name rather than breaking the column layout", () => {
@@ -338,8 +303,8 @@ describe("cost column", () => {
   });
 
   it("keeps the header and a row the same width", () => {
-    const [header] = formatTableHeader(fullLayout, { primaryWindowMinutes: 10_080 });
-    const [row] = formatTurnRow(fullLayout, turn({ rateLimits: { primaryWindowMinutes: 10_080 } }));
+    const [header] = formatTableHeader(fullLayout);
+    const [row] = formatTurnRow(fullLayout, turn());
     expect(row?.length).toBe(header?.length);
   });
 });
@@ -523,7 +488,7 @@ describe("the live table in colour", () => {
 
   it("keeps the header and its rule the same width once stripped", () => {
     const layout = selectLayout(200);
-    const [header, underline] = formatTableHeader(layout, undefined, COLOUR).map(strip);
+    const [header, underline] = formatTableHeader(layout, COLOUR).map(strip);
 
     expect(header?.length).toBe(underline?.length);
   });

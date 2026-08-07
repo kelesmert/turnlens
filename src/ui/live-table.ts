@@ -1,7 +1,7 @@
 import { truncate, truncateEnd } from "../core/text.js";
 import { PLAIN } from "./colour.js";
 import type { Paint } from "./colour.js";
-import type { NormalizedTurn, RateLimits, SessionRef } from "../core/types.js";
+import type { NormalizedTurn, SessionRef } from "../core/types.js";
 
 const MODEL_WIDTH = 18;
 const COST_WIDTH = 10;
@@ -50,8 +50,6 @@ export type ColumnId =
   | "reasoning"
   | "total"
   | "cost"
-  | "primaryLimit"
-  | "secondaryLimit"
   | "tools"
   | "model"
   | "effort"
@@ -92,49 +90,19 @@ export interface Layout {
 }
 
 /**
- * Renders a rate-limit window length in the units the agent actually reported.
- *
- * The previous implementation printed fixed `5 hour` and `Week` headings while
- * recording `window_minutes` and never reading it, so the labels were a guess
- * presented as fact. An unreported window reads as `-`.
- */
-export function formatWindowLabel(windowMinutes: number | undefined): string {
-  if (windowMinutes === undefined || windowMinutes <= 0) return ABSENT;
-  if (windowMinutes % 1_440 === 0) return `${windowMinutes / 1_440}d`;
-  if (windowMinutes % 60 === 0) return `${windowMinutes / 60}h`;
-  return `${windowMinutes}m`;
-}
-
-/**
  * Builds the column line and its separator rule.
  *
- * `rateLimits` only supplies the two limit-column headings. Passing none is the
- * normal case at startup, before any usage record has been seen.
+ * Every heading is fixed. It used to depend on data for the two rate-limit
+ * columns, which is why the layout is chosen before any record has been read
+ * and the header could be printed at startup; those columns are gone.
  */
-export function formatTableHeader(
-  layout: Layout,
-  rateLimits?: RateLimits,
-  paint: Paint = PLAIN,
-): readonly string[] {
-  const cells = layout.columns.map((column) => fit(labelFor(column, rateLimits), column));
+export function formatTableHeader(layout: Layout, paint: Paint = PLAIN): readonly string[] {
+  const cells = layout.columns.map((column) => fit(column.label, column));
   const header = cells.join(" ");
 
   // Painted after joining, because nothing inside the header carries a second
   // role. The rule beneath it is chrome, which is a different one.
   return [paint.heading(header), paint.chrome("-".repeat(header.length))];
-}
-
-/**
- * The heading a column shows, which for the two limit columns is observed.
- *
- * Their labels are the only part of the header that depends on data, so they
- * are resolved here rather than baked into the layout, which is chosen before
- * any usage record has been seen.
- */
-function labelFor(column: Column, rateLimits: RateLimits | undefined): string {
-  if (column.id === "primaryLimit") return formatWindowLabel(rateLimits?.primaryWindowMinutes);
-  if (column.id === "secondaryLimit") return formatWindowLabel(rateLimits?.secondaryWindowMinutes);
-  return column.label;
 }
 
 /**
@@ -224,8 +192,6 @@ function describeColumns(): readonly Column[] {
     { id: "reasoning", label: "Reason", width: 9, dropPriority: 1, alignRight: true },
     { id: "total", label: "Total", width: 12, alignRight: true },
     { id: "cost", label: "Cost", width: COST_WIDTH, alignRight: true },
-    { id: "primaryLimit", label: ABSENT, width: 8, dropPriority: 3, alignRight: true },
-    { id: "secondaryLimit", label: ABSENT, width: 8, dropPriority: 2, alignRight: true },
     { id: "tools", label: "Tools", width: 5, dropPriority: 6, alignRight: true },
     { id: "model", label: "Model", width: MODEL_WIDTH, minWidth: MODEL_MIN_WIDTH, dropPriority: 8 },
     { id: "effort", label: "Effort", width: 8, dropPriority: 4 },
@@ -349,8 +315,6 @@ function describeValues(turn: NormalizedTurn): Readonly<Record<ColumnId, string>
     reasoning: formatCount(turn.usage.reasoning),
     total: formatCount(turn.usage.total),
     cost: formatCost(turn.costUsd),
-    primaryLimit: formatPercent(turn.rateLimits?.primaryUsedPercent),
-    secondaryLimit: formatPercent(turn.rateLimits?.secondaryUsedPercent),
     tools: formatCount(countToolCalls(turn)),
     model: orAbsent(truncate(turn.model, MODEL_WIDTH)),
     effort: orAbsent(turn.reasoningEffort),
@@ -378,10 +342,6 @@ function formatClockTime(timestamp: string): string {
 
 function formatCount(value: number): string {
   return value.toLocaleString("en-US");
-}
-
-function formatPercent(value: number | undefined): string {
-  return value === undefined ? ABSENT : `${value.toFixed(1)}%`;
 }
 
 /**

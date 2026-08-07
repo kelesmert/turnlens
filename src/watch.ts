@@ -131,7 +131,7 @@ export async function runWatch(options: WatchOptions): Promise<void> {
 
   for (const line of formatHistoryBlock(history, width)) write(line);
   for (const line of describeNarrowing(layout, width)) write(line);
-  for (const line of formatTableHeader(layout, undefined, paint)) write(line);
+  for (const line of formatTableHeader(layout, paint)) write(line);
 
   // Awaited: followLines opens the file and captures its rewrite anchor eagerly,
   // so the window between measuring startByte and reading from it stays closed.

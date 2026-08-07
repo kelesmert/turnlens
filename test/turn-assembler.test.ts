@@ -192,22 +192,6 @@ describe("TurnAssembler with cumulative counters", () => {
     expect(turn?.usage.total).toBe(500);
   });
 
-  it("carries the latest rate limits onto the turn", () => {
-    const turns = drain(
-      [
-        {
-          kind: "usage",
-          at: "t1",
-          usage: cumulative(100),
-          rateLimits: { primaryUsedPercent: 73, primaryWindowMinutes: 10_080 },
-        },
-        { kind: "turnEnd", at: "t2", turnId: "turn-a" },
-      ],
-      "cumulative",
-    );
-
-    expect(turns[0]?.rateLimits).toEqual({ primaryUsedPercent: 73, primaryWindowMinutes: 10_080 });
-  });
 });
 
 describe("TurnAssembler with per-event counters", () => {

@@ -1,6 +1,6 @@
 import { toFiniteFloat, toFiniteInt } from "../../core/numbers.js";
 import { collapseWhitespace } from "../../core/text.js";
-import type { ProviderEvent, RateLimits, TokenUsage, UsageModel } from "../../core/types.js";
+import type { ProviderEvent, TokenUsage, UsageModel } from "../../core/types.js";
 
 /** Codex writes session-cumulative counters, so a turn is a delta. */
 export const CODEX_USAGE_MODEL: UsageModel = "cumulative";
@@ -95,8 +95,7 @@ function parseEventMessage(
       const usage = readCumulativeUsage(payload);
       if (usage === undefined) return [];
 
-      const rateLimits = readRateLimits(payload);
-      return [{ kind: "usage", at, usage, ...(rateLimits === undefined ? {} : { rateLimits }) }];
+      return [{ kind: "usage", at, usage }];
     }
 
     case "task_complete":
@@ -210,26 +209,6 @@ function readCumulativeUsage(payload: Readonly<Record<string, unknown>>): TokenU
   };
 }
 
-function readRateLimits(payload: Readonly<Record<string, unknown>>): RateLimits | undefined {
-  const limits = payload["rate_limits"];
-  if (!isRecord(limits)) return undefined;
-
-  const primary = isRecord(limits["primary"]) ? limits["primary"] : {};
-  const secondary = isRecord(limits["secondary"]) ? limits["secondary"] : {};
-
-  const result: RateLimits = {
-    ...optional("primaryUsedPercent", toFiniteFloat(primary["used_percent"])),
-    ...optional("primaryWindowMinutes", toFiniteInt(primary["window_minutes"])),
-    ...optional("secondaryUsedPercent", toFiniteFloat(secondary["used_percent"])),
-    ...optional("secondaryWindowMinutes", toFiniteInt(secondary["window_minutes"])),
-  };
-
-  return Object.keys(result).length === 0 ? undefined : result;
-}
-
-function optional<K extends string>(key: K, value: number | undefined): Partial<Record<K, number>> {
-  return value === undefined ? {} : ({ [key]: value } as Record<K, number>);
-}
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

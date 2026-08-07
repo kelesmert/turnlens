@@ -1,6 +1,6 @@
 import { makePromptPreview } from "./text.js";
 import { addUsage, assertNever, emptyUsage, subtractUsageClamped } from "./usage.js";
-import type { ProviderEvent, RateLimits, TokenUsage, TurnStatus, UsageModel } from "./types.js";
+import type { ProviderEvent, TokenUsage, TurnStatus, UsageModel } from "./types.js";
 
 export interface AssemblerOptions {
   readonly usageModel: UsageModel;
@@ -28,7 +28,6 @@ export interface AssembledTurn {
   readonly reasoningEffort: string;
   readonly promptPreview: string;
   readonly durationMs?: number;
-  readonly rateLimits?: RateLimits;
 }
 
 interface CloseRequest {
@@ -59,7 +58,6 @@ export class TurnAssembler {
   #baseline: TokenUsage;
   #latest: TokenUsage;
   #pending: TokenUsage = emptyUsage();
-  #rateLimits: RateLimits | undefined;
   #seenDedupKeys = new Set<string>();
   #seenCallKeys = new Set<string>();
   #toolCalls = new Map<string, number>();
@@ -98,7 +96,7 @@ export class TurnAssembler {
         return undefined;
 
       case "usage":
-        this.#applyUsage(event.usage, event.dedupKey, event.rateLimits);
+        this.#applyUsage(event.usage, event.dedupKey);
         return undefined;
 
       case "turnEnd":
@@ -142,7 +140,7 @@ export class TurnAssembler {
     this.#toolCalls.set(name, (this.#toolCalls.get(name) ?? 0) + 1);
   }
 
-  #applyUsage(usage: TokenUsage, dedupKey?: string, rateLimits?: RateLimits): void {
+  #applyUsage(usage: TokenUsage, dedupKey?: string): void {
     if (dedupKey !== undefined) {
       if (this.#seenDedupKeys.has(dedupKey)) return;
       this.#seenDedupKeys.add(dedupKey);
@@ -151,7 +149,6 @@ export class TurnAssembler {
     if (this.#usageModel === "cumulative") this.#latest = usage;
     else this.#pending = addUsage(this.#pending, usage);
 
-    if (rateLimits !== undefined) this.#rateLimits = rateLimits;
   }
 
   #close(request: CloseRequest): AssembledTurn | undefined {
@@ -164,7 +161,6 @@ export class TurnAssembler {
 
     const turnId = this.#turnId;
     const startedAt = this.#startedAt;
-    const rateLimits = this.#rateLimits;
     const toolCalls = Object.fromEntries(this.#toolCalls);
     const model = this.#model;
     const reasoningEffort = this.#reasoningEffort;
@@ -185,7 +181,6 @@ export class TurnAssembler {
       ...(turnId === undefined ? {} : { turnId }),
       ...(startedAt === undefined ? {} : { startedAt }),
       ...(request.durationMs === undefined ? {} : { durationMs: request.durationMs }),
-      ...(rateLimits === undefined ? {} : { rateLimits }),
     };
   }
 
@@ -207,6 +202,5 @@ export class TurnAssembler {
     // and inheriting the previous turn's would date it by someone else's prompt.
     this.#startedAt = undefined;
     this.#promptPreview = "";
-    this.#rateLimits = undefined;
   }
 }

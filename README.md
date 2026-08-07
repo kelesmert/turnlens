@@ -319,9 +319,9 @@ Rows are appended and never rewritten. A closed turn keeps the price that was in
 effect when it closed, and records which pricing list that was, so a rate change
 upstream never moves a number you already have.
 
-27 columns, named in the header row: timestamps and status, the model and its
+23 columns, named in the header row: timestamps and status, the model and its
 reasoning effort, every token category separately, the cost and which pricing
-list produced it, tool calls, rate-limit windows and duration.
+list produced it, tool calls and duration.
 
 An empty cost is always explained by the `cost_status` column. TurnLens never
 records a cost of zero for a model it could not price, because a zero joins a

@@ -41,7 +41,10 @@ describe("parseCodexRecord rejects what it does not understand", () => {
 });
 
 describe("parseCodexRecord reads cumulative usage", () => {
-  it("subtracts cached input and carries rate limits", () => {
+  // The record still carries `rate_limits`, which is what Codex writes and what
+  // TurnLens stopped reading. Kept in the input deliberately: a field nothing
+  // parses must pass through without disturbing the event it sits beside.
+  it("subtracts cached input, ignoring fields nothing reads", () => {
     const events = parseCodexRecord({
       type: "event_msg",
       timestamp: "2026-07-22T02:31:05.000Z",
@@ -76,7 +79,6 @@ describe("parseCodexRecord reads cumulative usage", () => {
       reasoning: 0,
       total: 128_496,
     });
-    expect(event.rateLimits).toEqual({ primaryUsedPercent: 73, primaryWindowMinutes: 10_080 });
     expect(event.at).toBe("2026-07-22T02:31:05.000Z");
   });
 
@@ -92,17 +94,6 @@ describe("parseCodexRecord reads cumulative usage", () => {
 
     if (events[0]?.kind !== "usage") throw new Error("expected a usage event");
     expect(events[0].usage.total).toBe(120);
-  });
-
-  it("omits rate limits entirely when none were reported", () => {
-    const events = parseCodexRecord({
-      type: "event_msg",
-      timestamp: "t",
-      payload: { type: "token_count", info: { total_token_usage: { total_tokens: 10 } } },
-    });
-
-    if (events[0]?.kind !== "usage") throw new Error("expected a usage event");
-    expect(events[0].rateLimits).toBeUndefined();
   });
 
   it("ignores a token_count whose usage fields are all missing", () => {

@@ -99,7 +99,6 @@ export function normaliseTurn(input: NormaliseInput): NormalizedTurn {
     pricingVersion: lookup.version,
     ...(cost.amountUsd === undefined ? {} : { costUsd: cost.amountUsd }),
     ...(assembled.durationMs === undefined ? {} : { durationMs: assembled.durationMs }),
-    ...(assembled.rateLimits === undefined ? {} : { rateLimits: assembled.rateLimits }),
   };
 }
 

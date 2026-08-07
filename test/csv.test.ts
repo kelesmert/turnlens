@@ -256,27 +256,16 @@ describe("appendTurn", () => {
     const fields = await readRow(path);
 
     expect(field(fields, "duration_ms")).toBe("");
-    expect(field(fields, "primary_used_percent")).toBe("");
-    expect(field(fields, "secondary_window_minutes")).toBe("");
   });
 
-  it("writes rate limits and duration when present", async () => {
+  it("writes duration when present", async () => {
     const path = await tempCsv();
     await openCsv(path);
-    await appendTurn(
-      path,
-      turn({
-        durationMs: 17_691,
-        rateLimits: { primaryUsedPercent: 73, primaryWindowMinutes: 10_080 },
-      }),
-    );
+    await appendTurn(path, turn({ durationMs: 17_691 }));
 
     const fields = await readRow(path);
 
     expect(field(fields, "duration_ms")).toBe("17691");
-    expect(field(fields, "primary_used_percent")).toBe("73");
-    expect(field(fields, "primary_window_minutes")).toBe("10080");
-    expect(field(fields, "secondary_used_percent")).toBe("");
   });
 
   it("appends rows in order without disturbing earlier ones", async () => {
