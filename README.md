@@ -138,9 +138,14 @@ which one to watch. On selection it prices the turns the session already closed
 and shows them as one summary line, then follows the transcript and prints a row
 each time a turn closes. Stop with Ctrl+C; a summary is printed on exit.
 
-Those earlier turns are counted in the on-screen summary only. **Only turns that
-close while you are watching are written to the CSV**, which is why a report and
-a CSV of the same session can hold different numbers of rows.
+Both summaries, the one on selection and the one on exit, describe the whole
+session. **Only turns that close while you are watching are written to the CSV**,
+which is why a report and a CSV of the same session can hold different numbers of
+rows.
+
+A row's number is the turn's place in the session, so the same turn carries the
+same number in every CSV, and watching the same session from two directories no
+longer numbers it two ways.
 
 ```bash
 turnlens                            # ask which agent, then which session
