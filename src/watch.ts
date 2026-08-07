@@ -1,5 +1,5 @@
 import { normaliseTurn, parseJson, replaySession, resolveTurnId } from "./core/replay.js";
-import { appendTurn, openCsv, turnRowKey } from "./core/store/csv.js";
+import { appendTurn, openCsv, readRecordedKeys, turnRowKey } from "./core/store/csv.js";
 import { wrapWords } from "./core/text.js";
 import { byteLength, followLines, readCompleteLines } from "./core/tail.js";
 import { TurnAssembler } from "./core/turn-assembler.js";
@@ -89,8 +89,13 @@ interface Recorder {
 export async function importHistory(
   options: WatchOptions & { readonly stopAtByte: number },
 ): Promise<number> {
-  const state = await openCsv(options.csvPath);
-  const recordedKeys = new Set(state.recordedKeys);
+  await openCsv(options.csvPath);
+
+  // The one place a CSV is read, and the reason is this function's whole job:
+  // it merges a replayed transcript into a file that may already hold part of
+  // it. Codex records nothing twice, so its parser holds no state of its own and
+  // a second import would otherwise write every turn again.
+  const recordedKeys = new Set(await readRecordedKeys(options.csvPath));
 
   let recorded = 0;
   for await (const replayed of replaySession({
@@ -213,7 +218,7 @@ async function createRecorder(
   history: SessionTotals,
   baseline: { readonly baseline?: TokenUsage },
 ): Promise<Recorder> {
-  const state = await openCsv(options.csvPath);
+  await openCsv(options.csvPath);
 
   return {
     assembler: new TurnAssembler({
@@ -221,7 +226,10 @@ async function createRecorder(
       includePromptPreview: options.includePromptPreview,
       ...baseline,
     }),
-    recordedKeys: new Set(state.recordedKeys),
+    // Empty, because the CSV is an output and is never read. This guards the
+    // one case that occurs: `followLines` finding the transcript shortened and
+    // restarting from byte 0, which re-emits turns this run already wrote.
+    recordedKeys: new Set<string>(),
     turnNumber: history.turns,
     totals: history,
   };

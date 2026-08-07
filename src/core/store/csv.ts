@@ -1,6 +1,5 @@
 import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { toFiniteInt } from "../numbers.js";
 import type { NormalizedTurn } from "../types.js";
 
 export const CSV_HEADER = [
@@ -31,10 +30,48 @@ export const CSV_HEADER = [
 
 type CsvColumn = (typeof CSV_HEADER)[number];
 
-export interface CsvState {
-  readonly maxTurnNumber: number;
-  /** Keys of the rows already recorded, for skipping them on re-import. */
-  readonly recordedKeys: ReadonlySet<string>;
+/**
+ * The keys of the rows a file already holds.
+ *
+ * **The one read of a CSV that survives, and only for merging into one.**
+ * `importHistory` replays a whole transcript into a file that may already hold
+ * part of it, so skipping what is there is a question about that file and
+ * nothing else can answer it.
+ *
+ * The watcher never calls this. It starts at the end of the transcript, so it
+ * cannot produce a turn that was already written, and its own guard against the
+ * tail restarting from byte 0 is a set held for the length of the run. That is
+ * why a row's number, and the summary printed at exit, no longer come from here:
+ * an output file is not a place to keep state.
+ *
+ * A missing or header-only file has no rows and yields an empty set.
+ */
+export async function readRecordedKeys(path: string): Promise<ReadonlySet<string>> {
+  let contents: string;
+  try {
+    contents = await readFile(path, "utf8");
+  } catch {
+    return new Set();
+  }
+
+  const keys = new Set<string>();
+  for (const row of contents.split("\n").slice(1)) {
+    if (row.trim() === "") continue;
+    const fields = parseCsvRow(row);
+    keys.add(
+      turnRowKey({
+        turnId: read(fields, "turn_id"),
+        status: read(fields, "status"),
+        at: read(fields, "timestamp"),
+      }),
+    );
+  }
+
+  return keys;
+}
+
+function read(fields: readonly string[], column: CsvColumn): string {
+  return fields[CSV_HEADER.indexOf(column)] ?? "";
 }
 
 /** The parts of a turn that identify its row. */
@@ -77,7 +114,7 @@ export function turnRowKey(row: TurnRowIdentity): string {
  * an error rather than an automatic conversion, so an unrecognised schema cannot
  * be silently reshaped.
  */
-export async function openCsv(path: string): Promise<CsvState> {
+export async function openCsv(path: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
 
   let contents: string;
@@ -87,8 +124,7 @@ export async function openCsv(path: string): Promise<CsvState> {
     return await createEmpty(path);
   }
 
-  const rows = contents.split("\n").filter((row) => row.trim() !== "");
-  const header = rows[0];
+  const header = contents.split("\n").find((row) => row.trim() !== "");
   if (header === undefined) return await createEmpty(path);
 
   if (header !== HEADER_LINE) {
@@ -109,24 +145,6 @@ export async function openCsv(path: string): Promise<CsvState> {
       ].join("\n"),
     );
   }
-
-  const recordedKeys = new Set<string>();
-  let maxTurnNumber = 0;
-
-  for (const row of rows.slice(1)) {
-    const fields = parseCsvRow(row);
-    maxTurnNumber = Math.max(maxTurnNumber, toFiniteInt(read(fields, "turn_number"), 0));
-
-    recordedKeys.add(
-      turnRowKey({
-        turnId: read(fields, "turn_id"),
-        status: read(fields, "status"),
-        at: read(fields, "timestamp"),
-      }),
-    );
-  }
-
-  return { maxTurnNumber, recordedKeys };
 }
 
 /**
@@ -184,13 +202,8 @@ export async function appendTurn(path: string, turn: NormalizedTurn): Promise<vo
   }
 }
 
-async function createEmpty(path: string): Promise<CsvState> {
+async function createEmpty(path: string): Promise<void> {
   await writeFile(path, `${HEADER_LINE}\n`, "utf8");
-  return { maxTurnNumber: 0, recordedKeys: new Set() };
-}
-
-function read(fields: readonly string[], column: CsvColumn): string {
-  return fields[CSV_HEADER.indexOf(column)] ?? "";
 }
 
 function optionalNumber(value: number | undefined): string {

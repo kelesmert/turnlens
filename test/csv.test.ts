@@ -2,7 +2,14 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CSV_HEADER, appendTurn, openCsv, turnRowKey } from "../src/core/store/csv.js";
+import {
+  CSV_HEADER,
+  appendTurn,
+  openCsv,
+  parseCsvRow,
+  readRecordedKeys,
+  turnRowKey,
+} from "../src/core/store/csv.js";
 import { emptyUsage } from "../src/core/usage.js";
 import type { NormalizedTurn } from "../src/core/types.js";
 import type { CostStatus } from "../src/pricing/types.js";
@@ -112,13 +119,11 @@ describe("turnRowKey", () => {
 });
 
 describe("openCsv", () => {
-  it("creates the file with the header and reports empty state", async () => {
+  it("creates the file with the header", async () => {
     const path = await tempCsv();
 
-    const state = await openCsv(path);
+    await openCsv(path);
 
-    expect(state.maxTurnNumber).toBe(0);
-    expect(state.recordedKeys.size).toBe(0);
     expect(await readFile(path, "utf8")).toBe(`${CSV_HEADER.join(",")}\n`);
   });
 
@@ -130,37 +135,28 @@ describe("openCsv", () => {
     expect(await readFile(path, "utf8")).toBe(`${CSV_HEADER.join(",")}\n`);
   });
 
-  it("reads the recorded rows and the highest turn number without rewriting the file", async () => {
+  /**
+   * Opening a populated file used to parse every row, which is how the CSV
+   * became an input. It now reads the header and nothing else, so the one thing
+   * that must still hold is that opening changes nothing.
+   */
+  it("leaves an existing file byte-identical", async () => {
     const path = await tempCsv();
     await openCsv(path);
-    const first = turn({ turnNumber: 1, turnId: "turn-a" });
-    const second = turn({ turnNumber: 2, turnId: "turn-b", at: "2026-07-22T02:40:00.000Z" });
-    await appendTurn(path, first);
-    await appendTurn(path, second);
+    await appendTurn(path, turn({ turnNumber: 1, turnId: "turn-a" }));
+    await appendTurn(path, turn({ turnNumber: 2, turnId: "turn-b", at: "2026-07-22T02:40:00.000Z" }));
     const before = await readFile(path, "utf8");
 
-    const state = await openCsv(path);
+    await openCsv(path);
 
-    expect(state.maxTurnNumber).toBe(2);
-    expect(state.recordedKeys.has(turnRowKey(first))).toBe(true);
-    expect(state.recordedKeys.has(turnRowKey(second))).toBe(true);
-    expect(state.recordedKeys.size).toBe(2);
     expect(await readFile(path, "utf8")).toBe(before);
   });
 
-  it("distinguishes a compaction from a completion sharing one turn id", async () => {
-    const path = await tempCsv();
-    await openCsv(path);
+  it("distinguishes a compaction from a completion sharing one turn id", () => {
     const compacted = turn({ turnNumber: 1, turnId: "shared", status: "compacted", at: "t1" });
     const completed = turn({ turnNumber: 2, turnId: "shared", status: "completed", at: "t2" });
-    await appendTurn(path, compacted);
-    await appendTurn(path, completed);
 
-    const state = await openCsv(path);
-
-    expect(state.recordedKeys.size).toBe(2);
-    expect(state.recordedKeys.has(turnRowKey(compacted))).toBe(true);
-    expect(state.recordedKeys.has(turnRowKey(completed))).toBe(true);
+    expect(turnRowKey(compacted)).not.toBe(turnRowKey(completed));
   });
 
   it("rejects a file whose header does not match the current schema", async () => {
@@ -174,21 +170,29 @@ describe("openCsv", () => {
     const path = await tempCsv();
     await writeFile(path, "", "utf8");
 
-    const state = await openCsv(path);
+    await openCsv(path);
 
-    expect(state.maxTurnNumber).toBe(0);
     expect(await readFile(path, "utf8")).toBe(`${CSV_HEADER.join(",")}\n`);
   });
 
-  it("recovers a row whose turn id contains a comma", async () => {
+  /**
+   * Nothing in `src/` reads a CSV any more, and this is why `parseCsvRow` is
+   * still exported: a written row has to remain recoverable, and checking that
+   * needs the writer's inverse.
+   */
+  it("writes a turn id containing a comma so it can be read back whole", async () => {
     const path = await tempCsv();
     await openCsv(path);
     const recorded = turn({ turnId: "weird,id" });
     await appendTurn(path, recorded);
 
-    const state = await openCsv(path);
+    const [row = []] = (await readFile(path, "utf8"))
+      .trim()
+      .split("\n")
+      .slice(1)
+      .map((line) => parseCsvRow(line));
 
-    expect(state.recordedKeys.has(turnRowKey(recorded))).toBe(true);
+    expect(field(row, "turn_id")).toBe("weird,id");
   });
 });
 
@@ -293,20 +297,18 @@ describe("appendTurn", () => {
   // A newline inside a field would split the row across physical lines, and the
   // trailing fragment then reads as a row of its own. That fabricates a turn id,
   // which would make the next real turn look like a duplicate and be skipped.
-  it("cannot have a row or turn number fabricated by a newline inside a field", async () => {
+  it("cannot have a row fabricated by a newline inside a field", async () => {
     const path = await tempCsv();
     await openCsv(path);
-    const recorded = turn({
-      turnNumber: 1,
-      turnId: "turn-a",
-      promptPreview: "one\n9,9,9,9,42,injected,x",
-    });
-    await appendTurn(path, recorded);
+    await appendTurn(
+      path,
+      turn({ turnNumber: 1, turnId: "turn-a", promptPreview: "one\n9,9,9,9,42,injected,x" }),
+    );
 
-    const state = await openCsv(path);
+    const rows = (await readFile(path, "utf8")).trim().split("\n").slice(1);
 
-    expect([...state.recordedKeys]).toEqual([turnRowKey(recorded)]);
-    expect(state.maxTurnNumber).toBe(1);
+    expect(rows).toHaveLength(1);
+    expect(field(parseCsvRow(rows[0] ?? ""), "turn_number")).toBe("1");
   });
 });
 
@@ -385,5 +387,50 @@ describe("openCsv and the pricing schema change", () => {
 
     await expect(openCsv(path)).rejects.toThrow();
     expect(await readFile(path, "utf8")).toBe(before);
+  });
+});
+
+describe("readRecordedKeys", () => {
+  /**
+   * The only read of a CSV left in the program, and it exists for one operation:
+   * merging a replayed transcript into a file that may already hold part of it.
+   * The watcher does not call it.
+   */
+  it("returns the key of every row the file holds", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    const first = turn({ turnNumber: 1, turnId: "turn-a" });
+    const second = turn({ turnNumber: 2, turnId: "turn-b", at: "2026-07-22T02:40:00.000Z" });
+    await appendTurn(path, first);
+    await appendTurn(path, second);
+
+    const keys = await readRecordedKeys(path);
+
+    expect(keys.size).toBe(2);
+    expect(keys.has(turnRowKey(first))).toBe(true);
+    expect(keys.has(turnRowKey(second))).toBe(true);
+  });
+
+  it("recovers a key from a row whose turn id contains a comma", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+    const recorded = turn({ turnId: "weird,id" });
+    await appendTurn(path, recorded);
+
+    expect((await readRecordedKeys(path)).has(turnRowKey(recorded))).toBe(true);
+  });
+
+  it("holds nothing for a file that is only a header", async () => {
+    const path = await tempCsv();
+    await openCsv(path);
+
+    expect((await readRecordedKeys(path)).size).toBe(0);
+  });
+
+  /** A watch that has not written yet asks about a file that does not exist. */
+  it("holds nothing for a file that does not exist", async () => {
+    const path = await tempCsv();
+
+    expect((await readRecordedKeys(path)).size).toBe(0);
   });
 });
