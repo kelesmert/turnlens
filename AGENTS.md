@@ -67,7 +67,14 @@ copy is right until the next flag is added.
   there rather than beside it.
 - **`importHistory` is still deliberately unreachable from the CLI.** A
   `--import-history` flag was considered and rejected. What it owns now is only
-  the CSV: deduping, renumbering and appending.
+  the CSV: deduping and appending. It stopped renumbering when a row's number
+  became the turn's place in the transcript.
+- **The CSV is written, not read.** A row's number is the turn's position in the
+  session and the exit summary is folded from the session's turns, so neither
+  depends on a file that lands wherever the command was run. `readRecordedKeys`
+  is the one read left and `importHistory` is its only caller, because merging a
+  replay into an existing file means knowing what that file holds. Adding a
+  second read puts program state back into an output.
 - **Display width is deliberately counted in code units.** A half-built Unicode
   table that is wrong in a new way is worse than an honest note.
 - **Colour is a `Paint` passed in, applied after fitting, and never nested.**
