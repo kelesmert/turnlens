@@ -82,7 +82,6 @@ export async function importHistory(
 ): Promise<number> {
   const state = await openCsv(options.csvPath);
   const recordedKeys = new Set(state.recordedKeys);
-  let turnNumber = state.maxTurnNumber;
 
   let recorded = 0;
   for await (const replayed of replaySession({
@@ -96,11 +95,9 @@ export async function importHistory(
     if (recordedKeys.has(key)) continue;
     recordedKeys.add(key);
 
-    // Renumbered rather than taken from the replay. Replay counts within the
-    // transcript; the CSV counts within itself, and an import into a file that
-    // already holds rows continues that file's sequence.
-    turnNumber += 1;
-    await appendTurn(options.csvPath, { ...replayed, turnNumber });
+    // The replay's own number is kept. It counts within the transcript, which is
+    // what a turn number means everywhere now.
+    await appendTurn(options.csvPath, replayed);
     recorded += 1;
   }
 
@@ -120,7 +117,11 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   const startByte = await byteLength(options.session.path);
   const baseline = await readBaseline(options, startByte);
   const history = await readHistory(options, startByte);
-  const recorder = await createRecorder(options, baseline === undefined ? {} : { baseline });
+  const recorder = await createRecorder(
+    options,
+    history.turns,
+    baseline === undefined ? {} : { baseline },
+  );
 
   // Measured once, here, and never again: the layout it produces is handed to
   // the header and to every row after it, so a window resized mid-run cannot
@@ -186,8 +187,19 @@ function overrideCommand(platform: NodeJS.Platform): string {
 }
 
 
+/**
+ * Builds the recorder, and seeds its numbering from the session rather than the file.
+ *
+ * `turnsBefore` is how many turns the transcript already held when monitoring
+ * started, so the first turn recorded here is the session's next one. Taking it
+ * from the CSV instead made a row's number a fact about the file: the same turn
+ * was numbered 16 from one directory and 7 from another, because the CSV lands
+ * where the command was run. A number that describes the conversation is the
+ * same number everywhere, and needs no file to produce it.
+ */
 async function createRecorder(
   options: WatchOptions,
+  turnsBefore: number,
   baseline: { readonly baseline?: TokenUsage },
 ): Promise<Recorder> {
   const state = await openCsv(options.csvPath);
@@ -199,7 +211,7 @@ async function createRecorder(
       ...baseline,
     }),
     recordedKeys: new Set(state.recordedKeys),
-    turnNumber: state.maxTurnNumber,
+    turnNumber: turnsBefore,
   };
 }
 

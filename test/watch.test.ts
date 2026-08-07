@@ -90,6 +90,17 @@ describe("importHistory over a real Codex session", () => {
     expect(column(aborted[0] ?? [], "duration_ms")).toBe("23942");
   });
 
+  /**
+   * An import walks the whole transcript, so its numbers are the transcript's own
+   * ordinals with no gaps. They used to be renumbered against the CSV, which made
+   * the same turn's number depend on what the file already held.
+   */
+  it("numbers the imported turns by their place in the transcript", () => {
+    const numbers = columnValues("turn_number").map(Number);
+
+    expect(numbers).toEqual(numbers.map((_, index) => index + 1));
+  });
+
   it("reproduces the turn counts taken from the session by hand", () => {
     const statuses = columnValues("status");
 
@@ -242,6 +253,55 @@ describe("runWatch over a session that is still being written", () => {
 
     expect(block).toMatch(/History: \d+ turns/u);
     expect(block).toMatch(/today's rates/u);
+  });
+
+  /**
+   * The number a row carries is the turn's place in the session, not its place in
+   * the file it lands in. Proved by watching the same growth twice against two
+   * different CSVs, one empty and one already holding a row numbered 999: if the
+   * file were the source, the second run would start at 1000.
+   *
+   * The fixture's first 96 records hold 11 turns, so the two that close while the
+   * watcher is attached are the session's 12th and 13th.
+   */
+  it("numbers a live turn by its place in the session, whatever the CSV holds", async () => {
+    const records = (await readFile(FIXTURE, "utf8")).split("\n").filter((l) => l.trim() !== "");
+
+    const numbersWith = async (seed?: string): Promise<readonly string[]> => {
+      const dir = await mkdtemp(join(tmpdir(), "turnlens-number-"));
+      const sessionPath = join(dir, "growing.jsonl");
+      const csvPath = join(dir, "session.csv");
+      await writeFile(sessionPath, `${records.slice(0, SPLIT_AFTER_RECORD).join("\n")}\n`, "utf8");
+      if (seed !== undefined) await writeFile(csvPath, seed, "utf8");
+
+      const controller = new AbortController();
+      const watching = runWatch({
+        session: { ...SESSION, path: sessionPath },
+        adapter: createCodexAdapter(),
+        csvPath,
+        includePromptPreview: false,
+        pricing: await offlineResolver(),
+        signal: controller.signal,
+        write: () => undefined,
+      });
+
+      await appendFile(sessionPath, `${records.slice(SPLIT_AFTER_RECORD).join("\n")}\n`, "utf8");
+      const written = await waitForRows(csvPath, seed === undefined ? 2 : 3);
+      controller.abort();
+      await watching;
+
+      // The first two recorded, because appending the rest of the fixture closes
+      // more turns than this is about and how many land before the abort is a race.
+      return written
+        .map((row) => column(row, "turn_number"))
+        .filter((value) => value !== "999")
+        .slice(0, 2);
+    };
+
+    const seededRow = CSV_HEADER.map((name) => (name === "turn_number" ? "999" : "")).join(",");
+
+    expect(await numbersWith()).toEqual(["12", "13"]);
+    expect(await numbersWith(`${CSV_HEADER.join(",")}\n${seededRow}\n`)).toEqual(["12", "13"]);
   });
 
   it("says nothing about history for a session with nothing closed yet", async () => {
